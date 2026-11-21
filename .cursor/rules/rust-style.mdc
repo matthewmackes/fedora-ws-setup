@@ -1,0 +1,46 @@
+---
+description: Idiomatic Rust style, dependencies, tracing/logging for AI-assisted development
+alwaysApply: true
+---
+
+# Rust style and observability
+
+## Idiomatic Rust
+
+- Prefer **safe, clear types** and explicit error paths in production code.
+- Minimize `unwrap`/`expect` on runtime paths; use `Result`, `thiserror`/`anyhow` consistent with the touched crate.
+- `expect` with a precise message is acceptable for truly invariant launch/config failures; panicking deep in event loops is not.
+- Match edition/workspace norms in `mde/crates/Cargo.toml` (`edition = "2021"`, shared deps).
+- Run `rustfmt` expectations: don’t fight project formatting; keep diffs focused.
+
+## Dependencies
+
+- Prefer crates.io / Rust ecosystem solutions over shelling out to ad-hoc scripts.
+- Reuse workspace dependencies (`tokio`, `tracing`, `serde`, `iced`, `zbus`, `clap`, …) before adding overlapping crates.
+- New deps are allowed when they clearly reduce complexity; avoid one-off “clever” stacks.
+
+## Logging for AI / vibe coding
+
+Optimize for fast agent iteration: failures must be diagnosable from terminal output and logs without guessing.
+
+- Use **`tracing`** (and existing `tracing-subscriber` patterns) in Rust services.
+- When changing a subsystem, **extend or improve logs** around the new control flow (start/stop, IPC, config load, privilege calls, Wayland/layer-shell errors).
+- Keep installer/user progress UX informative; put deep diagnostics in tracing/journal-friendly logs.
+- Prefer structured fields (`%`, key-value) over opaque strings when adding spans/events.
+- After a failed run: read the actual error/log lines first, then fix — don’t invent a parallel theory.
+
+### Practical commands
+
+```bash
+# from mde/crates
+RUST_LOG=info,mde_shell=debug cargo run -p mde-shell
+RUST_LOG=debug cargo run -p mde-session
+```
+
+- Wire new binaries into the same logging story early (env filter, consistent target names).
+
+## UI code (iced / layershell)
+
+- Follow existing `mde-shell` / `mde-control` patterns for flyouts, taskbar, and settings.
+- Prefer Windows-adjacent interaction: bottom bar, flyouts above the bar, dismiss-on-outside-click, compact QS/OSD.
+- Don’t introduce a second UI toolkit for chrome that already lives in iced.

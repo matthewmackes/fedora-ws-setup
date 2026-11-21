@@ -1,0 +1,40 @@
+---
+description: Platform architecture — MDE-first, Rust source of truth, installer boundary, crate layout
+alwaysApply: true
+---
+
+# Architecture
+
+## Center of gravity
+
+- **MDE (`mde/`) is the product.** The Anaconda-style installer exists to deploy it, not to own desktop behavior.
+- **Source of truth for desktop behavior:** Rust crates under `mde/crates/` (compositor, session, shell, IPC, settings, lock, etc.).
+- Optimize changes for the **Rust Wayland session stack** on latest Fedora + linux-surface. XFCE / PiPedal paths are secondary.
+
+## Installer boundary (hard)
+
+- `fedora-ws-setup.sh` and `lib/` may **only invoke** `mde/install.sh` (plus catalog/flags needed to select MDE).
+- **Do not** embed MDE internals, session logic, or DE chrome in `lib/`.
+- When an installer change is needed for MDE: update the thin handoff + keep `catalog/` and installer feature flags **in sync in the same change**.
+
+## Python → Rust
+
+- **Prefer Rust whenever it is best practice.** Treat remaining Python under `mde/shell/` / `lib/` as legacy.
+- If a task **touches** a Python module, **port that module to Rust in the same change** (aggressive rewrite), leave the tree compiling/running, and remove or stub the old Python entry so it is not the live path.
+- Do not grow new Python features. New UI/session/logic belongs in Rust crates (iced / existing MDE patterns).
+
+## Crate layout
+
+- Prefer **consolidating crates** when boundaries feel artificial or force awkward IPC.
+- New top-level workspace members need a clear reason; merging or shrinking is encouraged when it simplifies the session stack.
+- Follow existing workspace members and `default-members` in `mde/crates/Cargo.toml` unless consolidation intentionally changes them.
+- Prefer **Rust ecosystem crates** for app logic; minimize bespoke shell-outs when a crate or in-process API will do.
+
+## Ambiguity
+
+- When product intent is unclear: **read live code** plus `mde/crates/WORKLIST.md` / `CUTOVER.md`, then decide — do not block on asking unless truly blocked on credentials or external access.
+- UX north star when code/worklist agree: **Windows-adjacent familiarity** (taskbar, Start, flyouts, settings metaphors) already present in MDE.
+
+## Docs
+
+- **Code is truth.** Do not update README/WORKLIST/docs unless the user asks. Implement in code first.

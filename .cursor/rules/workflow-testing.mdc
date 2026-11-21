@@ -1,0 +1,63 @@
+---
+description: Dev workflow — WORKLIST-first, horizontal depth, cargo build, auto-commit on green
+alwaysApply: true
+---
+
+# Workflow and verification
+
+## Before inventing an approach
+
+1. Read the relevant **live code** in `mde/crates/`.
+2. Check `mde/crates/README.md`, crate-level docs, `WORKLIST.md`, and `CUTOVER.md` for intended direction.
+3. Only then implement. Prefer mirroring proven patterns in-tree over greenfield redesigns — except when consolidating crates or porting Python → Rust as required by architecture rules.
+
+## Session scope
+
+- Prefer **horizontal depth**: improve one layer thoroughly (e.g. `mde-comp`, `mde-shell`, `mde-ipc`/protocol, session) rather than scattering thin vertical stubs.
+- Stay within the asked layer/problem unless a compile break forces a small adjacent fix.
+- Opportunistic drive-by refactors are OK when they consolidate crates or remove Python in the touched area.
+
+## Build verification (default)
+
+After meaningful Rust changes, run a **full debug `cargo build` for affected workspace members** from `mde/crates/`:
+
+```bash
+cd mde/crates
+cargo build -p <affected-crate>   # minimum
+# when the change spans the session stack or workspace deps:
+cargo build
+```
+
+- Do not stop at `cargo check` unless the user asked for a quick syntax-only pass.
+- If install/session wiring changed, apply/restart the relevant units or binaries on this machine to confirm.
+- Use existing smoke scripts when they cover the area (`mde/crates/scripts/smoke.sh`, `verify-p0.sh`) after larger stack changes.
+
+## Git: commit when green
+
+- After a **coherent unit of work builds green** (and smoke/verify if you ran them), **create a git commit** without waiting for an extra “please commit.”
+- Keep commits focused on that coherent build; message should state the why in 1–2 sentences.
+- Do not commit secrets, huge build artifacts, or ignored paths (`target/`, `logs/`, etc.).
+- Do not push unless the user asks.
+
+Example:
+
+```bash
+git add -A
+git status
+git commit -m "$(cat <<'EOF'
+Summarize why this green build matters.
+
+EOF
+)"
+```
+
+## Failure loop
+
+1. Read compiler/runtime/tracing output.
+2. Fix locally; rebuild the affected members.
+3. Repeat until green, then commit.
+4. Ask the user only when blocked on product intent that code/WORKLIST cannot resolve, or on missing credentials/access.
+
+## Catalog / installer changes
+
+- If packages or feature flags change, update catalog + flags + MDE handoff together, then verify with a real apply when appropriate, then commit.

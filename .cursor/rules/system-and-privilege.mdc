@@ -1,0 +1,35 @@
+---
+description: System mutation freedom, privilege model, Fedora/Surface targets, assets
+alwaysApply: true
+---
+
+# System, privilege, and targets
+
+## Agent freedom on this machine
+
+- This repo is a **workstation setup / desktop platform**. The agent may run **real applies**, including root, `dnf`, `systemctl`, greeter/session installs, and live MDE binary swaps when that verifies or advances the work.
+- Prefer real verification over dry-run theater when the change is meant to land on this seat.
+- Still avoid irreversible data loss (wiping unrelated user data, rewriting disk partitions) unless explicitly requested.
+
+## Privilege model
+
+- **Setup / install path:** root and polkit are OK (`mde/install.sh`, package installs, greetd/seatd, system units).
+- **Runtime session:** keep the daily-driver session **unprivileged**. Privileged helpers (`mde-privileged`, PAM unlock, polkit actions) stay narrow and intentional.
+- Do not broaden privileged attack surface “for convenience” in session chrome; put elevation behind explicit user actions or install-time configuration.
+
+## Targets
+
+- Primary: **latest Fedora stable** and **linux-surface** where relevant.
+- Develop and test assuming x86_64 Wayland MDE on this class of hardware.
+- Keep installer handoff compatible with minimal/server → MDE, but do not sacrifice MDE quality for parity with every alternate DE.
+
+## Assets and branding
+
+- Free to update brand, theme, icon, and related assets under `assets/` and `mde/assets/` when UI work needs it.
+- Windows-adjacent density and metaphors (taskbar height, flyouts, Start, Settings) beat stock GNOME/libadwaita defaults when choosing UI behavior.
+- When replacing icons/fonts/themes, prefer assets that keep Mackes/MDE look coherent with the live shell.
+
+## Catalog and flags
+
+- Package lists in `catalog/` and installer feature flags must stay consistent with what MDE/install actually needs.
+- Any feature that requires packages: update **catalog + installer flags + MDE install handoff** together.
