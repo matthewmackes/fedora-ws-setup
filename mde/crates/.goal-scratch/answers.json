@@ -1,0 +1,507 @@
+{
+  "goal": "MDE \u00d7 Win11 community audit MCQs",
+  "answered": 100,
+  "total": 100,
+  "responses": {
+    "001": {
+      "choice": "A",
+      "note": "",
+      "title": "Taskbar left alignment as community preset / default"
+    },
+    "002": {
+      "choice": "A",
+      "note": "",
+      "title": "Taskbar Search modes editable in Settings"
+    },
+    "003": {
+      "choice": "A",
+      "note": "",
+      "title": "Widgets button off by default (community quiet-desktop)"
+    },
+    "004": {
+      "choice": "A",
+      "note": "",
+      "title": "Taskbar badges toggle (message counts)"
+    },
+    "005": {
+      "choice": "A",
+      "note": "",
+      "title": "Never combine / show labels (ExplorerPatcher / Windhawk demand)"
+    },
+    "006": {
+      "choice": "C",
+      "note": "",
+      "title": "Taskbar on top / any edge (StartAllBack headline feature)"
+    },
+    "007": {
+      "choice": "A",
+      "note": "",
+      "title": "Dynamic / acrylic taskbar transparency (StartAllBack / Windhawk Taskbar Styler)"
+    },
+    "008": {
+      "choice": "A",
+      "note": "",
+      "title": "Small taskbar / compact icon size (Windhawk classic)"
+    },
+    "009": {
+      "choice": "A",
+      "note": "",
+      "title": "Taskbar auto-hide polish"
+    },
+    "010": {
+      "choice": "A",
+      "note": "",
+      "title": "Start \u201cMore pins\u201d layout density"
+    },
+    "011": {
+      "choice": "A",
+      "note": "",
+      "title": "Start folders next to power (Settings, Explorer, Downloads\u2026)"
+    },
+    "012": {
+      "choice": "A",
+      "note": "",
+      "title": "Keep Start free of promo / recommendation chrome"
+    },
+    "013": {
+      "choice": "A",
+      "note": "",
+      "title": "StartAllBack / Start11-style vertical Start"
+    },
+    "014": {
+      "choice": "A",
+      "note": "",
+      "title": "Start pin folders / large pins polish"
+    },
+    "015": {
+      "choice": "A",
+      "note": "",
+      "title": "PowerToys Run / Command Palette launcher"
+    },
+    "016": {
+      "choice": "A",
+      "note": "",
+      "title": "FancyZones-style custom snap layouts"
+    },
+    "017": {
+      "choice": "A",
+      "note": "",
+      "title": "Snap Groups restore in Alt+Tab / taskbar"
+    },
+    "018": {
+      "choice": "A",
+      "note": "",
+      "title": "Always On Top discoverability (feature exists)"
+    },
+    "019": {
+      "choice": "A",
+      "note": "",
+      "title": "Color Picker polish (path exists)"
+    },
+    "020": {
+      "choice": "C",
+      "note": "",
+      "title": "Text Extractor / OCR from screen (PowerToys)"
+    },
+    "021": {
+      "choice": "B",
+      "note": "",
+      "title": "Peek file preview (PowerToys)"
+    },
+    "022": {
+      "choice": "A",
+      "note": "",
+      "title": "Keyboard Manager / remapper (PowerToys)"
+    },
+    "023": {
+      "choice": "A",
+      "note": "",
+      "title": "Awake / keep awake utility (PowerToys)"
+    },
+    "024": {
+      "choice": "A",
+      "note": "",
+      "title": "Mouse Find My Mouse / highlighter (PowerToys)"
+    },
+    "025": {
+      "choice": "D",
+      "note": "",
+      "title": "Screen Ruler / ZoomIt-like annotate (PowerToys)"
+    },
+    "026": {
+      "choice": "A",
+      "note": "",
+      "title": "Workspaces / project launch layouts (PowerToys Workspaces)"
+    },
+    "027": {
+      "choice": "C",
+      "note": "",
+      "title": "Classic full context menu (ExplorerPatcher demand)"
+    },
+    "028": {
+      "choice": "D",
+      "note": "",
+      "title": "Alt+Tab compact vs thumbnail modes"
+    },
+    "029": {
+      "choice": "C",
+      "note": "",
+      "title": "Taskbar thumbnail peek (deferred W443)"
+    },
+    "030": {
+      "choice": "A",
+      "note": "",
+      "title": "Jump lists with real recent files"
+    },
+    "031": {
+      "choice": "D",
+      "note": "",
+      "title": "NC calendar / agenda depth"
+    },
+    "032": {
+      "choice": "A",
+      "note": "",
+      "title": "Per-app notification prefs beyond mute"
+    },
+    "033": {
+      "choice": "C",
+      "note": "",
+      "title": "Focus Assist schedules / automatic rules"
+    },
+    "034": {
+      "choice": "D",
+      "note": "",
+      "title": "Focus sessions depth (timer already real)"
+    },
+    "035": {
+      "choice": "A",
+      "note": "",
+      "title": "QS Edit tiles that persist like Win11"
+    },
+    "036": {
+      "choice": "A",
+      "note": "",
+      "title": "QS volume mixer polish vs Settings parity"
+    },
+    "037": {
+      "choice": "A+C",
+      "note": "QS connect/disconnect for known devices AND full pair wizard in QS",
+      "title": "QS Bluetooth flyout depth"
+    },
+    "038": {
+      "choice": "A",
+      "note": "",
+      "title": "QS Wi-Fi password / join flow"
+    },
+    "039": {
+      "choice": "A",
+      "note": "",
+      "title": "Hotspot / VPN / Cast reliability"
+    },
+    "040": {
+      "choice": "A",
+      "note": "",
+      "title": "Tray overflow / hidden icons polish"
+    },
+    "041": {
+      "choice": "A",
+      "note": "",
+      "title": "Clipboard history: images + pin (community Win+V)"
+    },
+    "042": {
+      "choice": "A",
+      "note": "",
+      "title": "Advanced Paste beyond paste-as-file"
+    },
+    "043": {
+      "choice": "C",
+      "note": "Quiet default card set + per-card toggles AND pluggable third-party widget API",
+      "title": "Widgets board: curation & third-party API"
+    },
+    "044": {
+      "choice": "B",
+      "note": "",
+      "title": "File Explorer\u2013class shell (deferred W8)"
+    },
+    "045": {
+      "choice": "A",
+      "note": "",
+      "title": "Show file extensions / hidden files defaults"
+    },
+    "046": {
+      "choice": "A",
+      "note": "",
+      "title": "Virtual desktops naming + wallpaper per desktop"
+    },
+    "047": {
+      "choice": "C",
+      "note": "",
+      "title": "Task View thumbnail fidelity"
+    },
+    "048": {
+      "choice": "B",
+      "note": "",
+      "title": "Show-desktop peek-on-hover"
+    },
+    "049": {
+      "choice": "A",
+      "note": "",
+      "title": "Window Grab and Move / AltSnap"
+    },
+    "050": {
+      "choice": "A",
+      "note": "",
+      "title": "Title bar accent / mica / SSD corner radius"
+    },
+    "051": {
+      "choice": "A",
+      "note": "",
+      "title": "Light Switch / dark schedule reliability"
+    },
+    "052": {
+      "choice": "A",
+      "note": "",
+      "title": "Accent colour on Start/taskbar toggles (Win11 Colours)"
+    },
+    "053": {
+      "choice": "A",
+      "note": "",
+      "title": "Transparency effects master switch"
+    },
+    "054": {
+      "choice": "A",
+      "note": "",
+      "title": "Bing/Spotlight wallpaper rotation"
+    },
+    "055": {
+      "choice": "A",
+      "note": "",
+      "title": "Lock screen media controls that feel native"
+    },
+    "056": {
+      "choice": "A",
+      "note": "",
+      "title": "Greeter accessibility / keyboard layout real options"
+    },
+    "057": {
+      "choice": "B",
+      "note": "",
+      "title": "Switch user on lock for real (multi-seat/session)"
+    },
+    "058": {
+      "choice": "A",
+      "note": "",
+      "title": "Account picture change from Start"
+    },
+    "059": {
+      "choice": "A",
+      "note": "",
+      "title": "Night light strength + schedule UI"
+    },
+    "060": {
+      "choice": "A",
+      "note": "",
+      "title": "Display arrange drag-canvas (multi-monitor)"
+    },
+    "061": {
+      "choice": "A",
+      "note": "",
+      "title": "Project modes Super+P reliability"
+    },
+    "062": {
+      "choice": "A",
+      "note": "",
+      "title": "HDR / refresh rate / scale per monitor clarity"
+    },
+    "063": {
+      "choice": "A",
+      "note": "",
+      "title": "Startup apps manager like Win11"
+    },
+    "064": {
+      "choice": "A",
+      "note": "",
+      "title": "Default apps by file type / protocol"
+    },
+    "065": {
+      "choice": "A",
+      "note": "",
+      "title": "Installed apps uninstall + repair"
+    },
+    "066": {
+      "choice": "A",
+      "note": "",
+      "title": "Game Mode that does something measurable"
+    },
+    "067": {
+      "choice": "B",
+      "note": "",
+      "title": "Captures / Xbox-like screenshot+record"
+    },
+    "068": {
+      "choice": "B",
+      "note": "",
+      "title": "Emoji panel depth (native grid exists)"
+    },
+    "069": {
+      "choice": "B",
+      "note": "",
+      "title": "Voice typing / dictation polish (pipeline exists)"
+    },
+    "070": {
+      "choice": "A",
+      "note": "",
+      "title": "Magnifier fidelity (tool/scale path exists)"
+    },
+    "071": {
+      "choice": "A",
+      "note": "",
+      "title": "High contrast themes that actually apply"
+    },
+    "072": {
+      "choice": "A",
+      "note": "",
+      "title": "Text size system-wide slider"
+    },
+    "073": {
+      "choice": "A",
+      "note": "",
+      "title": "Shortcut Guide overlay (PowerToys)"
+    },
+    "074": {
+      "choice": "C",
+      "note": "",
+      "title": "Hosts editor / env vars (PowerToys admin toys)"
+    },
+    "075": {
+      "choice": "B",
+      "note": "Thunar already has bulk rename \u2014 rely on existing FM tools",
+      "title": "PowerRename / bulk rename"
+    },
+    "076": {
+      "choice": "A",
+      "note": "",
+      "title": "Image Resizer context action"
+    },
+    "077": {
+      "choice": "B",
+      "note": "",
+      "title": "File Locksmith \u201cwho\u2019s using this file\u201d"
+    },
+    "078": {
+      "choice": "A",
+      "note": "",
+      "title": "Nearby Share / KDE Connect remaining gaps"
+    },
+    "079": {
+      "choice": "C",
+      "note": "",
+      "title": "Debloat / telemetry-analogue: quiet recommendations"
+    },
+    "080": {
+      "choice": "A",
+      "note": "",
+      "title": "Taskbar context menu completeness"
+    },
+    "081": {
+      "choice": "C",
+      "note": "MMC Performance page only; polish and expand the MMC",
+      "title": "Task Manager quick access from taskbar/Ctrl+Shift+Esc"
+    },
+    "082": {
+      "choice": "A",
+      "note": "",
+      "title": "End task from taskbar (Win11 recent feature)"
+    },
+    "083": {
+      "choice": "A",
+      "note": "",
+      "title": "Progress bars on taskbar buttons"
+    },
+    "084": {
+      "choice": "C",
+      "note": "",
+      "title": "Search without web / local-only mode"
+    },
+    "085": {
+      "choice": "C",
+      "note": "",
+      "title": "Content search scale (rg path already works)"
+    },
+    "086": {
+      "choice": "D",
+      "note": "",
+      "title": "Calculator in Start search (keep + history)"
+    },
+    "087": {
+      "choice": "A",
+      "note": "",
+      "title": "Windhawk-like modular shell styler API"
+    },
+    "088": {
+      "choice": "A",
+      "note": "",
+      "title": "Animation reduce / disable (community perf/a11y)"
+    },
+    "089": {
+      "choice": "A",
+      "note": "",
+      "title": "Battery flyout details (Win11 QS)"
+    },
+    "090": {
+      "choice": "A",
+      "note": "",
+      "title": "Storage Sense analogue"
+    },
+    "091": {
+      "choice": "A",
+      "note": "",
+      "title": "Windows Update analogue clarity (dnf/flatpak)"
+    },
+    "092": {
+      "choice": "A",
+      "note": "",
+      "title": "Privacy dashboard (camera/mic/location indicators)"
+    },
+    "093": {
+      "choice": "A",
+      "note": "",
+      "title": "Firewall / Security center status freshness"
+    },
+    "094": {
+      "choice": "A",
+      "note": "",
+      "title": "Touchpad gestures Win11-like"
+    },
+    "095": {
+      "choice": "A",
+      "note": "",
+      "title": "Touch / tablet mode / OSK auto"
+    },
+    "096": {
+      "choice": "A",
+      "note": "",
+      "title": "Multi-monitor taskbar behaviors"
+    },
+    "097": {
+      "choice": "A",
+      "note": "",
+      "title": "Clock seconds / ISO date (already knobs \u2014 surface them)"
+    },
+    "098": {
+      "choice": "A",
+      "note": "",
+      "title": "World clocks in NC vs Widgets"
+    },
+    "099": {
+      "choice": "C",
+      "note": "",
+      "title": "Feedback / diagnostics UX naming"
+    },
+    "100": {
+      "choice": "A",
+      "note": "",
+      "title": "Quiet hours / Focus preset pack as \u201ccommunity recommended\u201d profile"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Mackes Desktop Environment
+Comment=MDE 2026 — Rust platform (mde-comp + mde-shell)
+Exec=mde-session
+TryExec=mde-session
+Type=Application
+DesktopNames=MDE
+Keywords=mde;mackes;wayland;smithay;

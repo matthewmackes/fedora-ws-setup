@@ -1,0 +1,67 @@
+#!/usr/bin/bash
+# MDE session entry after greetd handoff — Rust compositor + shell.
+set -euo pipefail
+
+export XDG_CURRENT_DESKTOP="MDE"
+export XDG_SESSION_DESKTOP="mde"
+export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-wayland}"
+export XDG_DESKTOP_PORTAL_DIR="/usr/share/xdg-desktop-portal"
+export MDE_VERSION="${MDE_VERSION:-2026}"
+export MOZ_ENABLE_WAYLAND=1 ELECTRON_OZONE_PLATFORM_HINT=auto
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland;xcb}"
+export SDL_VIDEODRIVER="${SDL_VIDEODRIVER:-wayland,x11}"
+export _JAVA_AWT_WM_NONREPARENTING=1
+
+if [[ -d "${HOME}/.local/bin" ]]; then
+  case ":${PATH:-}:" in
+    *":${HOME}/.local/bin:"*) ;;
+    *) export PATH="${HOME}/.local/bin:${PATH:-/usr/bin}" ;;
+  esac
+fi
+
+systemctl --user import-environment \
+  XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS XDG_SESSION_TYPE \
+  XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP MDE_VERSION \
+  >/dev/null 2>&1 || true
+
+if [[ -x /usr/bin/mde-session-rs ]]; then
+  exec /usr/bin/mde-session-rs "$@"
+fi
+
+# Inline fallback if Rust session binary is missing.
+if [[ ! -x /usr/bin/mde-comp || ! -x /usr/bin/mde-shell ]]; then
+  echo "mde-session: mde-comp/mde-shell not installed" >&2
+  exit 1
+fi
+
+runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+marker="${runtime}/mde-comp-wayland"
+rm -f "$marker"
+
+/usr/bin/mde-comp --session &
+comp_pid=$!
+
+# Wait for DRM compositor to advertise WAYLAND_DISPLAY via marker.
+for _ in $(seq 1 100); do
+  if [[ -f "$marker" ]]; then
+    export WAYLAND_DISPLAY="$(tr -d '\n' <"$marker")"
+    break
+  fi
+  if ! kill -0 "$comp_pid" 2>/dev/null; then
+    echo "mde-session: mde-comp exited before Wayland was ready" >&2
+    exit 1
+  fi
+  sleep 0.1
+done
+if [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
+  echo "mde-session: timed out waiting for Wayland socket" >&2
+  kill -TERM "$comp_pid" 2>/dev/null || true
+  exit 1
+fi
+
+systemctl --user import-environment WAYLAND_DISPLAY >/dev/null 2>&1 || true
+/usr/bin/mde-shell &
+shell_pid=$!
+trap 'kill -TERM $comp_pid $shell_pid 2>/dev/null; wait' EXIT INT TERM
+wait -n $comp_pid $shell_pid || true
+exit 0

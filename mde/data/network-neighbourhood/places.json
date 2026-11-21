@@ -1,0 +1,9 @@
+{
+  "places": [],
+  "settings": {
+    "discovery_classic": true,
+    "discovery_scan": true,
+    "scan_subnets": [],
+    "scan_ports": [22, 111, 139, 445, 2049, 4040, 8096, 8920]
+  }
+}

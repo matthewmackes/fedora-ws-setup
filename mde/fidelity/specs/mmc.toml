@@ -1,0 +1,89 @@
+schema = 1
+surface = "mmc"
+revision = 0
+status = "unmeasured"
+reference_build = ""
+dpi_basis = 96
+
+# Visual chrome for mde-mmc (Management Console). Values are placeholders until
+# a human capture + measure pass fills metrics/regions. See
+# mde/crates/mde-mmc/docs/WIN11_UI_AUDIT.md for the UI polish baseline.
+
+[capture]
+logical = [1180, 760]
+scales = [1.0, 1.25, 1.5]
+themes = ["light", "dark", "hc-black", "hc-white"]
+
+[[states]]
+id = "compmgmt-root"
+refs = []
+
+[[states]]
+id = "services-list"
+refs = []
+
+[[states]]
+id = "add-remove-snapins"
+refs = []
+
+[[metrics]]
+id = "mmc.tree.width.default"
+value_px = 280
+tolerance_px = 8
+source = "chrome::TREE_W"
+
+[[metrics]]
+id = "mmc.actions.width.default"
+value_px = 260
+tolerance_px = 8
+source = "chrome::ACTIONS_W"
+
+[[metrics]]
+id = "mmc.pane.radius"
+value_px = 6
+tolerance_px = 1
+source = "chrome::pane_radius"
+
+[[metrics]]
+id = "mmc.icon.tree"
+value_px = 16
+tolerance_px = 0
+source = "chrome::ICON_TREE"
+
+[[regions]]
+id = "menubar"
+rect = [0, 0, 0, 0]
+ssim_min = 0.93
+mae_max = 0.012
+compare = "reference"
+
+[[regions]]
+id = "toolbar"
+rect = [0, 0, 0, 0]
+ssim_min = 0.93
+mae_max = 0.012
+compare = "reference"
+
+[[regions]]
+id = "tree"
+rect = [0, 0, 0, 0]
+ssim_min = 0.93
+mae_max = 0.012
+compare = "reference"
+
+[[regions]]
+id = "results"
+rect = [0, 0, 0, 0]
+ssim_min = 0.93
+mae_max = 0.012
+compare = "reference"
+
+[[regions]]
+id = "actions"
+rect = [0, 0, 0, 0]
+ssim_min = 0.93
+mae_max = 0.012
+compare = "reference"
+
+[motion]
+actions = []

@@ -1,0 +1,35 @@
+[package]
+name = "mde-comp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "MDE smithay compositor — tabs-only, outputs, greeter stage"
+
+[[bin]]
+name = "mde-comp"
+path = "src/main.rs"
+
+[features]
+default = ["smithay", "xwayland"]
+# DRM/TTY backend via mde-anvil (smithay anvil-based).
+smithay = ["dep:mde-anvil"]
+# Compile XWayland support; start only when config session.xwayland is true.
+xwayland = ["smithay", "mde-anvil/xwayland"]
+# Nested winit window backend for developing without DRM/VT takeover (D2).
+# Opt-in: cargo run -p mde-comp --features nested -- --nested
+nested = ["smithay", "mde-anvil/winit"]
+winit = ["nested"]
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+mde-config = { workspace = true }
+mde-theme = { workspace = true }
+# Greetd IPC only — do not pull iced into the compositor build.
+mde-greeter = { path = "../mde-greeter", default-features = false }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true }
+mde-anvil = { path = "../mde-anvil", optional = true }

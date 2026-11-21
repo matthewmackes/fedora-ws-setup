@@ -1,0 +1,17 @@
+[Unit]
+Description=Network Neighbourhood mount and discovery service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=dbus
+BusName=org.mde.NetworkNeighbourhood1
+ExecStart=/usr/bin/network-neighbourhoodd
+Restart=on-failure
+RestartSec=3
+# Discovery writes the neighbourhood cache under /var/lib.
+RuntimeDirectory=
+StateDirectory=network-neighbourhood
+
+[Install]
+WantedBy=multi-user.target

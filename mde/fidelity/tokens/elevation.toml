@@ -1,0 +1,21 @@
+status = "unmeasured"
+
+[flyout_dark]
+offset_y = 8
+blur = 24
+alpha = 0.45
+
+[flyout_light]
+offset_y = 8
+blur = 24
+alpha = 0.28
+
+[dialog_dark]
+offset_y = 8
+blur = 24
+alpha = 0.45
+
+[dialog_light]
+offset_y = 8
+blur = 24
+alpha = 0.28

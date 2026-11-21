@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Labwc session chrome: taskbar, notifications, idle lock, clipboard, trays.
+# Kept named ws-sway-autostart for existing labwc autostart entries.
+set -u
+lock="${XDG_RUNTIME_DIR:-/tmp}/ws-sway-autostart.lock"
+exec 9>"$lock"
+flock -n 9 || exit 0
+
+disp="${WAYLAND_DISPLAY:-wayland-0}"
+if [[ "$disp" == /* ]]; then
+  sock="$disp"
+else
+  sock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/$disp"
+fi
+
+# Autostart can race compositor socket creation.
+for _ in $(seq 1 50); do
+  [[ -S "$sock" ]] && break
+  sleep 0.1
+done
+if [[ ! -S "$sock" ]]; then
+  echo "ws-sway-autostart: no Wayland socket at $sock" >&2
+  exit 1
+fi
+
+pids=()
+stop() {
+  trap - EXIT INT TERM HUP
+  local pid
+  for pid in "${pids[@]}"; do
+    kill -TERM "$pid" 2>/dev/null || true
+  done
+  wait 2>/dev/null || true
+  exit 0
+}
+trap stop EXIT INT TERM HUP
+
+reap_loop() {
+  local bin="$1"; shift
+  (
+    trap 'kill $(jobs -p) 2>/dev/null; exit 0' TERM INT HUP
+    while [[ -S "$sock" ]]; do
+      command -v "$bin" >/dev/null 2>&1 || exit 0
+      "$bin" "$@" &
+      wait $! || true
+      [[ -S "$sock" ]] || break
+      sleep 1
+    done
+  ) &
+  pids+=("$!")
+}
+
+(
+  while [[ -S "$sock" ]]; do
+    sleep 1
+  done
+  kill -TERM $$ 2>/dev/null || true
+) &
+pids+=("$!")
+
+reap_loop ws-taskbar
+reap_loop ws-watermark
+reap_loop swaync
+reap_loop ws-drawer start
+reap_loop ws-run-if swayosd-server
+reap_loop kanshi
+reap_loop lxpolkit
+if command -v gnome-keyring-daemon >/dev/null 2>&1; then
+  gnome-keyring-daemon --start --components=secrets >/dev/null 2>&1 || true
+fi
+if [[ -f "${HOME}/.Xresources" ]] && command -v xrdb >/dev/null 2>&1; then
+  xrdb -merge "${HOME}/.Xresources" >/dev/null 2>&1 || true
+fi
+reap_loop ws-idle
+reap_loop ws-clip-watch text
+reap_loop ws-clip-watch image
+reap_loop ws-nightlight
+reap_loop ws-battery-watch
+reap_loop ws-run-if udiskie --smart-tray --notify --automount
+reap_loop ws-run-if nm-applet --indicator
+wait

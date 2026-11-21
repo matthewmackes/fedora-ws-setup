@@ -1,0 +1,47 @@
+schema = 1
+surface = "connect"
+revision = 0
+# Behavior landed (W449). Win11 PNG refs still required for SSIM.
+status = "pending-capture"
+reference_build = ""
+dpi_basis = 96
+notes = "W449 Wireless display / Connect flyout — Share + Project; PNG refs pending capture"
+
+[capture]
+logical = [1920, 1080]
+scales = [1.0, 1.5]
+themes = ["light", "dark"]
+
+[[states]]
+id = "open-share"
+refs = []
+
+[[states]]
+id = "sharing-pill"
+refs = []
+
+[[states]]
+id = "project-extend"
+refs = []
+
+[[metrics]]
+id = "connect.card"
+value_px = 400
+tolerance_px = 8
+source = "CONNECT_CARD_W"
+
+[[metrics]]
+id = "connect.card_h"
+value_px = 420
+tolerance_px = 8
+source = "CONNECT_CARD_H"
+
+[[regions]]
+id = "chrome"
+rect = [0, 0, 0, 0]
+ssim_min = 0.93
+mae_max = 0.012
+compare = "reference"
+
+[motion]
+actions = []

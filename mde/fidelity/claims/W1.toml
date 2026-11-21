@@ -1,0 +1,6 @@
+id = "W1"
+status = "blocked"
+owner = "agent"
+reason = "spec status is unmeasured"
+surfaces = ["titlebar"]
+missing = "mde/fidelity/missing-captures.txt"

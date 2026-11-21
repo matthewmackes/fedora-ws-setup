@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.mde" path="/org/mde/">
+    <key name="version" type="s">
+      <default>'2026'</default>
+      <summary>MDE product year</summary>
+    </key>
+    <key name="accent" type="s">
+      <default>'#0078d4'</default>
+      <summary>Accent color</summary>
+    </key>
+    <key name="color-scheme" type="s">
+      <choices>
+        <choice value="prefer-light"/>
+        <choice value="prefer-dark"/>
+        <choice value="default"/>
+      </choices>
+      <default>'prefer-light'</default>
+      <summary>Color scheme preference</summary>
+    </key>
+    <key name="animations" type="b">
+      <default>true</default>
+      <summary>Enable shell motion / animations</summary>
+    </key>
+    <key name="panel-height" type="i">
+      <default>48</default>
+      <summary>Taskbar height in pixels</summary>
+    </key>
+    <key name="wallpaper" type="s">
+      <default>''</default>
+      <summary>Wallpaper path; empty uses system default</summary>
+    </key>
+  </schema>
+  <schema id="org.mde.taskbar" path="/org/mde/taskbar/">
+    <key name="alignment" type="s">
+      <default>'center'</default>
+      <summary>Taskbar icon alignment</summary>
+    </key>
+    <key name="autohide" type="b">
+      <default>false</default>
+      <summary>Auto-hide the taskbar</summary>
+    </key>
+    <key name="show-task-view" type="b">
+      <default>false</default>
+      <summary>Show Task View button</summary>
+    </key>
+    <key name="show-search" type="b">
+      <default>false</default>
+      <summary>Show Search button</summary>
+    </key>
+  </schema>
+  <schema id="org.mde.start" path="/org/mde/start/">
+    <key name="show-recommended" type="b">
+      <default>true</default>
+      <summary>Show Recommended section</summary>
+    </key>
+  </schema>
+  <schema id="org.mde.window-layout" path="/org/mde/window-layout/">
+    <key name="default-layout" type="s">
+      <choices>
+        <choice value="default"/>
+        <choice value="stacking"/>
+        <choice value="tabbed"/>
+      </choices>
+      <default>'default'</default>
+      <summary>How new tiled windows share a desktop</summary>
+    </key>
+    <key name="new-windows-floating" type="b">
+      <default>false</default>
+      <summary>Open new windows as floating</summary>
+    </key>
+    <key name="gaps-inner" type="i">
+      <default>0</default>
+      <summary>Inner gap between windows in pixels</summary>
+    </key>
+    <key name="gaps-outer" type="i">
+      <default>0</default>
+      <summary>Outer gap around the desktop in pixels</summary>
+    </key>
+    <key name="smart-gaps" type="b">
+      <default>false</default>
+      <summary>Hide gaps when a window is alone</summary>
+    </key>
+    <key name="border-tiled" type="i">
+      <default>1</default>
+      <summary>Border width for tiled windows</summary>
+    </key>
+    <key name="border-floating" type="i">
+      <default>1</default>
+      <summary>Border width for floating windows</summary>
+    </key>
+    <key name="titlebar-style" type="s">
+      <choices>
+        <choice value="pixel"/>
+        <choice value="normal"/>
+      </choices>
+      <default>'normal'</default>
+      <summary>Title bar style: pixel borders or normal title bars</summary>
+    </key>
+    <key name="show-window-buttons" type="b">
+      <default>false</default>
+      <summary>Legacy overlay. labwc draws the caption buttons, so this stays off.</summary>
+    </key>
+    <key name="smart-borders" type="s">
+      <choices>
+        <choice value="off"/>
+        <choice value="on"/>
+        <choice value="no_gaps"/>
+      </choices>
+      <default>'off'</default>
+      <summary>Smart borders</summary>
+    </key>
+    <key name="color-focused" type="s">
+      <default>'#0078d4'</default>
+      <summary>Focused window colour</summary>
+    </key>
+    <key name="color-focused-inactive" type="s">
+      <default>'#808080'</default>
+      <summary>Focused inactive window colour</summary>
+    </key>
+    <key name="color-unfocused" type="s">
+      <default>'#808080'</default>
+      <summary>Unfocused window colour</summary>
+    </key>
+    <key name="color-urgent" type="s">
+      <default>'#ff3b30'</default>
+      <summary>Urgent window colour</summary>
+    </key>
+    <key name="focus-follows-mouse" type="s">
+      <choices>
+        <choice value="yes"/>
+        <choice value="no"/>
+      </choices>
+      <default>'no'</default>
+      <summary>Focus follows the mouse</summary>
+    </key>
+    <key name="mouse-warping" type="s">
+      <choices>
+        <choice value="output"/>
+        <choice value="container"/>
+        <choice value="none"/>
+      </choices>
+      <default>'none'</default>
+      <summary>Move the pointer with the focus</summary>
+    </key>
+    <key name="focus-on-activation" type="s">
+      <choices>
+        <choice value="smart"/>
+        <choice value="urgent"/>
+        <choice value="focus"/>
+        <choice value="none"/>
+      </choices>
+      <default>'focus'</default>
+      <summary>Focus on window activation</summary>
+    </key>
+    <key name="floating-modifier" type="b">
+      <default>true</default>
+      <summary>Hold Super and drag to move floating windows</summary>
+    </key>
+    <key name="workspace-back-and-forth" type="b">
+      <default>false</default>
+      <summary>Desktop shortcut toggles previous desktop</summary>
+    </key>
+    <key name="taskbar-all-desktops" type="b">
+      <default>false</default>
+      <summary>Show open windows from all desktops on the taskbar</summary>
+    </key>
+    <key name="rules-preset" type="s">
+      <choices>
+        <choice value="win11"/>
+        <choice value="dialogs"/>
+        <choice value="power"/>
+        <choice value="custom"/>
+      </choices>
+      <default>'win11'</default>
+      <summary>Window rules preset pack</summary>
+    </key>
+    <key name="custom-rules" type="as">
+      <default>[]</default>
+      <summary>Custom app_id rules as app_id:floating or app_id:tiling</summary>
+    </key>
+    <key name="migrated" type="b">
+      <default>false</default>
+      <summary>One-time migration from settings.json multitasking keys</summary>
+    </key>
+  </schema>
+</schemalist>

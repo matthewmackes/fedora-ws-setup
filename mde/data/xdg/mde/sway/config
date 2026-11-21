@@ -1,0 +1,21 @@
+# MDE system defaults stub — install regenerates the full look into
+# /etc/xdg/mde/sway/config from look_mde.sh (sway_config). Keep this file as a
+# readable outline of the include layers only.
+#
+# Layering (each drop-in path included once):
+#   1. Generated look (fonts, gaps, keybinds, autostart, …)
+#   2. include /etc/xdg/mde/sway/config.d/*.conf
+#   3. User ~/.config/mde/sway/config includes this file, then
+#      include ~/.config/mde/sway/config.d/*.conf
+
+include /etc/sway/config.d/*
+include /usr/share/sway-systemd/95-system-keyboard-config.conf
+include /usr/share/sway-systemd/95-xdg-desktop-autostart.conf
+
+set $mod Mod4
+set $term terminator
+
+include /etc/xdg/mde/sway/config.d/*.conf
+
+exec mde-autostart
+exec_always sh -c 'sleep 0.5; command -v kanshictl >/dev/null && kanshictl reload'

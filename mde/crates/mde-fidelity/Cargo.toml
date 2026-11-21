@@ -1,0 +1,18 @@
+[package]
+name = "mde-fidelity"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Fidelity specs, measurement, SSIM diffs, and effect spikes"
+publish = false
+
+[[bin]]
+name = "mde-fidelity"
+path = "src/bin/measure.rs"
+
+[dependencies]
+cosmic-text = "0.12"
+image = { version = "0.25.1", default-features = false, features = ["png"] }
+serde = { workspace = true }
+toml = { workspace = true }
+mde-config = { workspace = true }

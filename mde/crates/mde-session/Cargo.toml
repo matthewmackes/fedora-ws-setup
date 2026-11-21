@@ -1,0 +1,20 @@
+[package]
+name = "mde-session"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "MDE session entry — starts mde-comp + mde-shell (greetd/seatd handoff)"
+
+[[bin]]
+name = "mde-session"
+path = "src/main.rs"
+
+[[bin]]
+name = "mde-session-ctl"
+path = "src/ctl.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+dirs = { workspace = true }
+mde-config = { workspace = true }
+mde-theme = { workspace = true }

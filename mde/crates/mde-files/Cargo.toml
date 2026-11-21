@@ -1,0 +1,15 @@
+[package]
+name = "mde-files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "File manager chrome. Visual fidelity is blocked until specs/files.toml is measured."
+publish = false
+
+[[bin]]
+name = "mde-files"
+path = "src/main.rs"
+
+[dependencies]
+mde-config = { workspace = true }
+mde-theme = { workspace = true }

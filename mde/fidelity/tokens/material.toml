@@ -1,0 +1,86 @@
+# Tints match chrome() / flyout_fill() today. blur = 0 until the blur spike ships.
+status = "unmeasured"
+
+[taskbar.light]
+kind = "acrylic"
+tint = "#f9f9f9"
+tint_alpha = 0.78
+blur = 0
+noise = 0.0
+
+[taskbar.dark]
+kind = "acrylic"
+tint = "#2c2c2c"
+tint_alpha = 0.70
+blur = 0
+noise = 0.0
+
+[taskbar.hc_black]
+kind = "solid"
+tint = "#000000"
+tint_alpha = 1.0
+blur = 0
+noise = 0.0
+
+[taskbar.hc_white]
+kind = "solid"
+tint = "#ffffff"
+tint_alpha = 1.0
+blur = 0
+noise = 0.0
+
+[flyout.light]
+kind = "acrylic"
+tint = "#f9f9f9"
+tint_alpha = 0.94
+blur = 0
+noise = 0.0
+
+[flyout.dark]
+kind = "acrylic"
+tint = "#2c2c2c"
+tint_alpha = 0.90
+blur = 0
+noise = 0.0
+
+[flyout.hc_black]
+kind = "solid"
+tint = "#000000"
+tint_alpha = 1.0
+blur = 0
+noise = 0.0
+
+[flyout.hc_white]
+kind = "solid"
+tint = "#ffffff"
+tint_alpha = 1.0
+blur = 0
+noise = 0.0
+
+[window.light]
+kind = "mica"
+tint = "#f3f3f3"
+tint_alpha = 0.86
+blur = 0
+noise = 0.0
+
+[window.dark]
+kind = "mica"
+tint = "#202020"
+tint_alpha = 0.86
+blur = 0
+noise = 0.0
+
+[window.hc_black]
+kind = "solid"
+tint = "#000000"
+tint_alpha = 1.0
+blur = 0
+noise = 0.0
+
+[window.hc_white]
+kind = "solid"
+tint = "#ffffff"
+tint_alpha = 1.0
+blur = 0
+noise = 0.0

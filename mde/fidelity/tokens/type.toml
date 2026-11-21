@@ -1,0 +1,38 @@
+# Current iced sizes used by the shell. Not a measured Win11 ramp.
+status = "unmeasured"
+
+[caption]
+size_px = 10
+line_px = 12
+weight = "regular"
+font = "ui"
+
+[body]
+size_px = 12
+line_px = 16
+weight = "regular"
+font = "ui"
+
+[body_strong]
+size_px = 13
+line_px = 16
+weight = "semibold"
+font = "ui"
+
+[subtitle]
+size_px = 14
+line_px = 18
+weight = "semibold"
+font = "ui"
+
+[title]
+size_px = 16
+line_px = 20
+weight = "semibold"
+font = "ui"
+
+[display]
+size_px = 48
+line_px = 56
+weight = "semibold"
+font = "ui"

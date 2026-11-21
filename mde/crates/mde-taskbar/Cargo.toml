@@ -1,0 +1,15 @@
+[package]
+name = "mde-taskbar"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "MDE taskbar (Rust port in progress; delegates to Python shell)"
+
+[[bin]]
+name = "mde-taskbar"
+path = "src/main.rs"
+
+[dependencies]
+mde-ipc = { path = "../mde-ipc" }
+mde-theme = { path = "../mde-theme" }
+anyhow = { workspace = true }

@@ -1,0 +1,13 @@
+Mackes-Carbon and Mackes-Carbon-Light
+
+SPDX: Apache-2.0
+Declared in: /usr/share/icons/Mackes-Carbon/index.theme
+  Comment=Mackes Shell — IBM Carbon Design System icons (Apache 2.0)
+License file on this machine: /usr/share/icons/Mackes-Carbon/LICENSE
+  Apache License 2.0, January 2004
+
+Redistributable. Shell chrome may keep using these icons.
+Do not replace them with Segoe Fluent Icons or SVGs taken from Windows.
+
+Known gap, not a license failure: `mde_theme::icons::chrome_icon` always
+resolves Mackes-Carbon-Light, including in the dark theme.

@@ -1,0 +1,186 @@
+# Neon Tech Penguin boot splash.
+# The artwork already includes the title and progress bar. Scale it to fit
+# the screen on black. A password box is drawn over it when Plymouth asks
+# for a disk passphrase.
+
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
+
+splash.image = Image("splash.png");
+splash.sprite = Sprite();
+splash.sprite.SetZ(-100);
+splash.sw = -1;
+splash.sh = -1;
+
+fun place_splash()
+  {
+    local.sw;
+    local.sh;
+    local.scale;
+    local.nw;
+    local.nh;
+
+    sw = Window.GetWidth();
+    sh = Window.GetHeight();
+    if (sw >= 1 && sh >= 1 && (sw != splash.sw || sh != splash.sh))
+      {
+        scale = sw / splash.image.GetWidth();
+        if (splash.image.GetHeight() * scale > sh)
+          scale = sh / splash.image.GetHeight();
+        nw = Math.Int(splash.image.GetWidth() * scale);
+        nh = Math.Int(splash.image.GetHeight() * scale);
+        if (nw < 1) nw = 1;
+        if (nh < 1) nh = 1;
+
+        splash.sprite.SetImage(splash.image.Scale(nw, nh));
+        splash.sprite.SetX(Window.GetX() + (sw - nw) / 2);
+        splash.sprite.SetY(Window.GetY() + (sh - nh) / 2);
+        splash.sprite.SetOpacity(1);
+        splash.sw = sw;
+        splash.sh = sh;
+      }
+  }
+
+place_splash();
+
+fun refresh_callback()
+  {
+    place_splash();
+  }
+
+Plymouth.SetRefreshFunction(refresh_callback);
+
+#----------------------------------------- Dialogue --------------------------------
+
+status = "normal";
+answer_sprite = Sprite();
+answer_sprite.SetZ(10000);
+message_sprite = Sprite();
+message_sprite.SetPosition(Window.GetX() + 24, Window.GetY() + 24, 10000);
+
+fun dialog_setup()
+  {
+    local.box;
+    local.lock;
+    local.entry;
+    local.prompt;
+
+    box.image = Image("box.png");
+    lock.image = Image("lock.png");
+    entry.image = Image("entry.png");
+
+    box.sprite = Sprite(box.image);
+    box.x = Window.GetX() + Window.GetWidth()  / 2 - box.image.GetWidth() / 2;
+    box.y = Window.GetY() + Window.GetHeight() / 2 - box.image.GetHeight() / 2;
+    box.z = 10000;
+    box.sprite.SetPosition(box.x, box.y, box.z);
+
+    lock.sprite = Sprite(lock.image);
+    lock.x = box.x + box.image.GetWidth() / 2 - (lock.image.GetWidth() + entry.image.GetWidth()) / 2;
+    lock.y = box.y + box.image.GetHeight() / 2 - lock.image.GetHeight() / 2;
+    lock.z = box.z + 1;
+    lock.sprite.SetPosition(lock.x, lock.y, lock.z);
+
+    entry.sprite = Sprite(entry.image);
+    entry.x = lock.x + lock.image.GetWidth();
+    entry.y = box.y + box.image.GetHeight() / 2 - entry.image.GetHeight() / 2;
+    entry.z = box.z + 1;
+    entry.sprite.SetPosition(entry.x, entry.y, entry.z);
+
+    prompt.sprite = Sprite();
+    prompt.sprite.SetZ(box.z + 1);
+
+    global.dialog.box = box;
+    global.dialog.lock = lock;
+    global.dialog.entry = entry;
+    global.dialog.prompt = prompt;
+    global.dialog.bullet_image = Image("bullet.png");
+    dialog_opacity(1);
+  }
+
+fun dialog_opacity(opacity)
+  {
+    dialog.box.sprite.SetOpacity(opacity);
+    dialog.lock.sprite.SetOpacity(opacity);
+    dialog.entry.sprite.SetOpacity(opacity);
+    dialog.prompt.sprite.SetOpacity(opacity);
+    for (index = 0; dialog.bullet[index]; index++)
+      {
+        dialog.bullet[index].sprite.SetOpacity(opacity);
+      }
+  }
+
+fun display_normal_callback()
+  {
+    global.status = "normal";
+    if (global.dialog)
+      dialog_opacity(0);
+    answer_sprite.SetOpacity(0);
+  }
+
+fun display_password_callback(prompt, bullets)
+  {
+    local.prompt_image;
+
+    global.status = "password";
+    if (!global.dialog)
+      dialog_setup();
+    else
+      dialog_opacity(1);
+    for (index = 0; dialog.bullet[index] || index < bullets; index++)
+      {
+        if (!dialog.bullet[index])
+          {
+            dialog.bullet[index].sprite = Sprite(dialog.bullet_image);
+            dialog.bullet[index].x = dialog.entry.x + index * dialog.bullet_image.GetWidth();
+            dialog.bullet[index].y = dialog.entry.y + dialog.entry.image.GetHeight() / 2 - dialog.bullet_image.GetHeight() / 2;
+            dialog.bullet[index].z = dialog.entry.z + 1;
+            dialog.bullet[index].sprite.SetPosition(dialog.bullet[index].x, dialog.bullet[index].y, dialog.bullet[index].z);
+          }
+        if (index < bullets)
+          dialog.bullet[index].sprite.SetOpacity(1);
+        else
+          dialog.bullet[index].sprite.SetOpacity(0);
+      }
+    prompt_image = Image.Text(prompt, 1, 1, 1);
+    dialog.prompt.sprite.SetImage(prompt_image);
+    dialog.prompt.sprite.SetPosition(dialog.box.x + dialog.box.image.GetWidth() / 2 - prompt_image.GetWidth() / 2,
+                                     dialog.box.y - prompt_image.GetHeight() - 12,
+                                     dialog.box.z + 1);
+    dialog.prompt.sprite.SetOpacity(1);
+  }
+
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+
+#----------------------------------------- Message --------------------------------
+
+fun display_message_callback(text)
+  {
+    my_image = Image.Text(text, 0.75, 0.9, 1);
+    message_sprite.SetImage(my_image);
+    message_sprite.SetOpacity(1);
+  }
+
+fun hide_message_callback(text)
+  {
+    message_sprite.SetOpacity(0);
+  }
+
+Plymouth.SetDisplayMessageFunction(display_message_callback);
+Plymouth.SetHideMessageFunction(hide_message_callback);
+
+#----------------------------------------- Question --------------------------------
+
+fun display_question_callback(prompt, entry)
+  {
+    local.entry_image;
+
+    display_message_callback(prompt);
+    entry_image = Image.Text(entry, 1, 1, 1);
+    answer_sprite.SetImage(entry_image);
+    answer_sprite.SetPosition(Window.GetX() + 24, Window.GetY() + 52, 10000);
+    answer_sprite.SetOpacity(1);
+  }
+
+Plymouth.SetDisplayQuestionFunction(display_question_callback);

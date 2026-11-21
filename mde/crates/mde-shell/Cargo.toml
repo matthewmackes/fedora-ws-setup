@@ -1,0 +1,30 @@
+[package]
+name = "mde-shell"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Unified iced shell: taskbar, Start, QS, tray, notifications, clipboard, OSD"
+
+[[bin]]
+name = "mde-shell"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+clap = { workspace = true }
+futures-util = "0.3"
+image = { version = "0.24.9", default-features = false, features = ["png", "jpeg"] }
+iced = { workspace = true, features = ["image"] }
+iced_layershell = "0.13.7"
+mde-config = { workspace = true }
+mde-theme = { workspace = true, features = ["iced", "icons"] }
+mde-protocol = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true }
+zbus = { workspace = true }
+ashpd = { workspace = true }

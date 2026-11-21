@@ -1,0 +1,6 @@
+id = "C3"
+status = "blocked"
+owner = "agent"
+reason = "spec status is unmeasured"
+surfaces = ["notification-center", "calendar", "toasts"]
+missing = "mde/fidelity/missing-captures.txt"

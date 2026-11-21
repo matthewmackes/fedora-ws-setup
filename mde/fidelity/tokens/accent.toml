@@ -1,0 +1,6 @@
+# Lightness deltas applied to theme.accent. Not calibrated to a capture.
+status = "unmeasured"
+
+[deltas]
+secondary_l = 0.12
+tertiary_l = 0.24

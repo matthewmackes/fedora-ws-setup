@@ -1,0 +1,23 @@
+# Reference and regression floors.
+# Surface cards must not lower these numbers. Raise them only with a logged spec change.
+schema = 1
+
+[regression]
+ssim_min = 0.985
+# 1.5/255
+mae_max = 0.005882352941176471
+
+[reference_floors]
+chrome_ssim_min = 0.93
+chrome_mae_max = 0.012
+text_ssim_min = 0.85
+text_mae_max = 0.04
+blur_ssim_min = 0.80
+blur_mae_max = 0.06
+
+[anchors]
+tolerance_px_96 = 1
+tolerance_physical_px_1_5 = 2
+
+[motion]
+duration_tolerance = 0.15

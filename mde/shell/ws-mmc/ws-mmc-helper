@@ -1,0 +1,210 @@
+#!/bin/bash
+# Root helper for Management Console actions that have no D-Bus API.
+# pkexec runs it; the polkit policy asks for an administrator password.
+# Every argument is checked before it is used. Nothing is passed to a shell.
+set -euo pipefail
+
+STATE=/etc/ws-mmc/disabled-devices
+
+die() { printf '%s\n' "$*" >&2; exit 1; }
+
+is_name() { [[ "${1:-}" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; }
+is_path() { [[ "${1:-}" =~ ^/devices/[A-Za-z0-9_.:@/-]+$ && "$1" != *..* ]]; }
+
+# Refuse to disable or remove the disk the running system is on.
+holds_root() {
+  local path="$1" src sys
+  src="$(findmnt -nro SOURCE / 2>/dev/null || true)"
+  src="${src%%\[*}"
+  [[ -n "$src" ]] || return 1
+  sys="$(readlink -f "/sys/class/block/$(basename "$(readlink -f "$src")")" 2>/dev/null || true)"
+  [[ "$sys" == "/sys${path}" || "$sys" == "/sys${path}/"* ]]
+}
+
+record() {
+  local path="$1" bus="$2" driver="$3" category="$4" name="$5"
+  name="${name//[$'\t\n']/ }"
+  category="${category//[$'\t\n']/ }"
+  mkdir -p /etc/ws-mmc
+  touch "$STATE"
+  local p rest
+  while IFS=$'\t' read -r p rest; do
+    [[ "$p" == "$path" ]] && return 0
+  done <"$STATE"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$path" "$bus" "$driver" "$category" "$name" >>"$STATE"
+}
+
+forget() {
+  local path="$1" tmp p rest
+  [[ -f "$STATE" ]] || return 0
+  tmp="$(mktemp)"
+  while IFS=$'\t' read -r p rest; do
+    [[ "$p" == "$path" ]] || printf '%s\t%s\n' "$p" "$rest" >>"$tmp"
+  done <"$STATE"
+  mv "$tmp" "$STATE"
+}
+
+device_disable() {
+  local path="$1" bus="$2" category="$3" name="$4" sys slot driver=""
+  is_path "$path" || die "That device path is not valid."
+  sys="/sys${path}"
+  [[ -e "$sys" ]] || die "That device is no longer there."
+  holds_root "$path" && die "This device holds the running system, so it can't be disabled."
+  case "$bus" in
+    usb)
+      [[ -w "$sys/authorized" ]] || die "This device can't be disabled."
+      echo 0 >"$sys/authorized" || die "The device could not be disabled."
+      ;;
+    pci)
+      slot="$(basename "$path")"
+      if [[ -e "$sys/driver" ]]; then
+        driver="$(basename "$(readlink -f "$sys/driver")")"
+        echo "$slot" >"/sys/bus/pci/drivers/${driver}/unbind" || die "The device could not be disabled."
+      fi
+      ;;
+    *) die "This device can't be disabled." ;;
+  esac
+  record "$path" "$bus" "$driver" "$category" "$name"
+}
+
+device_enable() {
+  local path="$1" bus="" driver="" sys slot line
+  is_path "$path" || die "That device path is not valid."
+  [[ -f "$STATE" ]] || die "This device is not disabled."
+  while IFS=$'\t' read -r p b d _c _n; do
+    if [[ "$p" == "$path" ]]; then bus="$b"; driver="$d"; fi
+  done <"$STATE"
+  [[ -n "$bus" ]] || die "This device is not disabled."
+  sys="/sys${path}"
+  if [[ "$bus" == usb && -e "$sys/authorized" ]]; then
+    echo 1 >"$sys/authorized" || die "The device could not be enabled."
+  elif [[ "$bus" == pci ]]; then
+    slot="$(basename "$path")"
+    if [[ -n "$driver" && -e "/sys/bus/pci/drivers/${driver}/bind" ]]; then
+      echo "$slot" >"/sys/bus/pci/drivers/${driver}/bind" || true
+    fi
+    echo 1 >/sys/bus/pci/rescan || true
+  fi
+  forget "$path"
+}
+
+device_remove() {
+  local path="$1" sys
+  is_path "$path" || die "That device path is not valid."
+  sys="/sys${path}"
+  [[ -e "$sys/remove" ]] || die "This device can't be uninstalled."
+  holds_root "$path" && die "This device holds the running system, so it can't be uninstalled."
+  echo 1 >"$sys/remove" || die "The device could not be uninstalled."
+  forget "$path"
+}
+
+device_rescan() {
+  echo 1 >/sys/bus/pci/rescan 2>/dev/null || true
+  device_reapply
+}
+
+device_reapply() {
+  [[ -f "$STATE" ]] || exit 0
+  local path bus driver category name sys slot
+  while IFS=$'\t' read -r path bus driver category name; do
+    is_path "$path" || continue
+    sys="/sys${path}"
+    [[ -e "$sys" ]] || continue
+    if [[ "$bus" == usb && -e "$sys/authorized" ]]; then
+      echo 0 >"$sys/authorized" || true
+    elif [[ "$bus" == pci && -n "$driver" && -e "$sys/driver" ]]; then
+      slot="$(basename "$path")"
+      echo "$slot" >"/sys/bus/pci/drivers/${driver}/unbind" || true
+    fi
+  done <"$STATE"
+}
+
+device_power() {
+  local path="$1" key="$2" value="$3" file
+  is_path "$path" || die "That device path is not valid."
+  case "$key:$value" in
+    control:auto|control:on|wakeup:enabled|wakeup:disabled) ;;
+    *) die "That power setting is not valid." ;;
+  esac
+  file="/sys${path}/power/${key}"
+  [[ -w "$file" ]] || die "This device has no such power setting."
+  echo "$value" >"$file" || die "The power setting could not be changed."
+}
+
+do_trim() {
+  local m="$1"
+  [[ "$m" == /* && "$m" != *$'\n'* ]] || die "That folder is not valid."
+  findmnt -T "$m" >/dev/null 2>&1 || die "That folder is not on a mounted drive."
+  command -v fstrim >/dev/null || die "fstrim is not installed."
+  fstrim "$m"
+  echo "The drive was optimized."
+}
+
+do_user_expire() { is_name "$1" || die "That user name is not valid."; chage -d 0 "$1"; }
+do_user_never() { is_name "$1" || die "That user name is not valid."; chage -M -1 "$1"; }
+
+do_group_add() { is_name "$1" || die "That group name is not valid."; groupadd "$1"; }
+
+do_group_del() {
+  local gid
+  is_name "$1" || die "That group name is not valid."
+  gid="$(getent group "$1" | cut -d: -f3)"
+  [[ -n "$gid" && "$gid" -ge 1000 ]] || die "System groups can't be deleted."
+  groupdel "$1"
+}
+
+do_group_rename() {
+  local gid
+  is_name "$1" && is_name "$2" || die "That group name is not valid."
+  gid="$(getent group "$1" | cut -d: -f3)"
+  [[ -n "$gid" && "$gid" -ge 1000 ]] || die "System groups can't be renamed."
+  groupmod -n "$2" "$1"
+}
+
+do_member_add() { is_name "$1" && is_name "$2" || die "That name is not valid."; gpasswd -a "$2" "$1" >/dev/null; }
+do_member_del() { is_name "$1" && is_name "$2" || die "That name is not valid."; gpasswd -d "$2" "$1" >/dev/null; }
+
+do_journal_clear() {
+  local scope="$1" uid="${2:-}"
+  if [[ "$scope" == user ]]; then
+    [[ "$uid" =~ ^[0-9]+$ ]] || die "That user is not valid."
+    runuser -u "#${uid}" -- journalctl --user --rotate
+    runuser -u "#${uid}" -- journalctl --user --vacuum-time=1s >/dev/null
+  elif [[ "$scope" == system ]]; then
+    journalctl --rotate
+    journalctl --vacuum-time=1s >/dev/null
+  else
+    die "That log can't be cleared."
+  fi
+  echo "The log was cleared."
+}
+
+dispatch() {
+  local cmd="$1"
+  shift
+  case "$cmd" in
+    device-disable) device_disable "$1" "$2" "$3" "$4"; shift 4 ;;
+    device-enable) device_enable "$1"; shift ;;
+    device-remove) device_remove "$1"; shift ;;
+    device-rescan) device_rescan ;;
+    device-reapply) device_reapply ;;
+    device-power) device_power "$1" "$2" "$3"; shift 3 ;;
+    trim) do_trim "$1"; shift ;;
+    user-expire) do_user_expire "$1"; shift ;;
+    user-never-expires) do_user_never "$1"; shift ;;
+    group-add) do_group_add "$1"; shift ;;
+    group-del) do_group_del "$1"; shift ;;
+    group-rename) do_group_rename "$1" "$2"; shift 2 ;;
+    group-member-add) do_member_add "$1" "$2"; shift 2 ;;
+    group-member-del) do_member_del "$1" "$2"; shift 2 ;;
+    journal-clear) do_journal_clear "$1" "${2:-}"; shift 2 ;;
+    batch) ;;
+    *) die "Unknown request." ;;
+  esac
+  if [[ $# -gt 0 ]]; then
+    dispatch "$@"
+  fi
+}
+
+[[ $# -ge 1 ]] || die "Nothing to do."
+dispatch "$@"

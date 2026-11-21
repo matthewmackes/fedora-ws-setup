@@ -1,0 +1,907 @@
+//! Podcast browser: trending directories, saved shows, and this server's shows.
+
+use crate::model::Track;
+use crate::podcasts::{self, Episode, Show};
+use crate::ui::shell::{bind_cover, play_track, AppState};
+use gtk4::prelude::*;
+use gtk4::{
+    Align, Box as GtkBox, Button, Entry, Label, ListBox, ListBoxRow, Orientation, ScrolledWindow,
+};
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+use std::sync::Arc;
+use std::time::Duration;
+
+#[derive(Clone)]
+enum Browse {
+    Trending,
+    Favorites,
+    Server,
+    Genre(String),
+    Search(String),
+}
+
+struct EpisodeList {
+    show: Show,
+    episodes: Vec<Episode>,
+    shown: usize,
+}
+
+struct Incoming {
+    gen: u64,
+    shows: Option<std::result::Result<Vec<Show>, String>>,
+    episodes: Option<std::result::Result<(Show, Vec<Episode>), String>>,
+    note: Option<String>,
+}
+
+#[derive(Clone)]
+pub(crate) struct PodcastPage {
+    state: Rc<AppState>,
+    root: GtkBox,
+    list: ListBox,
+    status: Label,
+    now: Label,
+    more: Button,
+    back: Button,
+    header: GtkBox,
+    favorites: Rc<RefCell<Vec<Show>>>,
+    server: Rc<RefCell<Vec<Show>>>,
+    shown: Rc<RefCell<Vec<Show>>>,
+    episodes: Rc<RefCell<Option<EpisodeList>>>,
+    mode: Rc<RefCell<Browse>>,
+    generation: Rc<Cell<u64>>,
+    chips: Rc<RefCell<Vec<(String, Button)>>>,
+    pending: Arc<parking_lot::Mutex<Option<Incoming>>>,
+}
+
+impl PodcastPage {
+    pub(crate) fn widget(&self) -> &GtkBox {
+        &self.root
+    }
+
+    pub(crate) fn set_server_shows(&self, shows: Vec<crate::model::Podcast>) {
+        *self.server.borrow_mut() = shows.iter().map(Show::from_server).collect();
+        if matches!(*self.mode.borrow(), Browse::Server) && self.episodes.borrow().is_none() {
+            self.start_shows(false);
+        }
+    }
+
+    fn bump(&self) -> u64 {
+        let gen = self.generation.get().wrapping_add(1);
+        self.generation.set(gen);
+        gen
+    }
+
+    fn set_active_chip(&self, key: &str) {
+        for (chip, button) in self.chips.borrow().iter() {
+            if chip == key {
+                button.add_css_class("nm-chip-on");
+            } else {
+                button.remove_css_class("nm-chip-on");
+            }
+        }
+    }
+
+    fn refresh_fav_chip(&self) {
+        let n = self.favorites.borrow().len();
+        let label = if n == 0 {
+            "Favorites".to_string()
+        } else {
+            format!("Favorites ({n})")
+        };
+        for (key, button) in self.chips.borrow().iter() {
+            if key == "favorites" {
+                button.set_label(&label);
+            }
+        }
+    }
+
+    fn is_saved(&self, show: &Show) -> bool {
+        let feed = feed_key(&show.feed_url);
+        self.favorites.borrow().iter().any(|saved| {
+            saved.id == show.id || (!feed.is_empty() && feed_key(&saved.feed_url) == feed)
+        })
+    }
+
+    fn toggle_saved(&self, show: &Show) -> bool {
+        let saved = {
+            let mut favs = self.favorites.borrow_mut();
+            let feed = feed_key(&show.feed_url);
+            if let Some(i) = favs.iter().position(|saved| {
+                saved.id == show.id || (!feed.is_empty() && feed_key(&saved.feed_url) == feed)
+            }) {
+                favs.remove(i);
+                false
+            } else {
+                favs.insert(0, show.clone());
+                true
+            }
+        };
+        let snapshot = self.favorites.borrow().clone();
+        if let Err(err) = podcasts::save_favorites(&snapshot) {
+            self.status.set_text(&format!("Could not save favorites: {err:#}"));
+        }
+        self.refresh_fav_chip();
+        if saved {
+            self.subscribe_show(show);
+        } else if matches!(*self.mode.borrow(), Browse::Favorites) && self.episodes.borrow().is_none()
+        {
+            let page = self.clone();
+            glib::timeout_add_local_once(Duration::from_millis(1), move || page.start_shows(false));
+        }
+        saved
+    }
+
+    fn subscribe_show(&self, show: &Show) {
+        if !show.feed_url.contains("://") {
+            self.status.set_text("Saved on this machine.");
+            return;
+        }
+        let Some(backend) = self.state.backend.read().clone() else {
+            podcasts::queue_subscription(show);
+            self.status
+                .set_text("Saved. Subscription will be tried again next time you connect.");
+            return;
+        };
+        let show = show.clone();
+        let pending = self.pending.clone();
+        let gen = self.generation.get();
+        std::thread::spawn(move || {
+            let note = match backend.subscribe_podcast(&show.feed_url) {
+                Ok(()) => {
+                    podcasts::forget_subscription(&show.feed_url);
+                    "Saved and subscribed on this server.".to_string()
+                }
+                Err(_) => {
+                    podcasts::queue_subscription(&show);
+                    "Saved. Subscription will be tried again next time you connect.".to_string()
+                }
+            };
+            let mut slot = pending.lock();
+            match slot.as_mut() {
+                Some(item) if item.gen > gen => {}
+                Some(item) => item.note = Some(note),
+                None => {
+                    *slot = Some(Incoming {
+                        gen,
+                        shows: None,
+                        episodes: None,
+                        note: Some(note),
+                    });
+                }
+            }
+        });
+    }
+
+    fn start_shows(&self, _append: bool) {
+        *self.episodes.borrow_mut() = None;
+        self.back.set_visible(false);
+        self.header.set_visible(false);
+        self.more.set_visible(false);
+        let gen = self.bump();
+        let mode = self.mode.borrow().clone();
+        match mode {
+            Browse::Favorites => {
+                let shows = self.favorites.borrow().clone();
+                let n = shows.len();
+                let msg = if n == 0 {
+                    "No saved shows yet. Search, then press Save.".to_string()
+                } else {
+                    format!("{n} saved show{}", plural(n))
+                };
+                self.replace_shows(shows, &msg);
+            }
+            Browse::Server => {
+                let shows = self.server.borrow().clone();
+                let n = shows.len();
+                let msg = if n == 0 {
+                    "This server has no podcasts.".to_string()
+                } else {
+                    format!("{n} show{} on this server", plural(n))
+                };
+                self.replace_shows(shows, &msg);
+            }
+            other => {
+                self.status.set_text("Looking up podcasts…");
+                let pending = self.pending.clone();
+                std::thread::spawn(move || {
+                    let result = match &other {
+                        Browse::Genre(name) => podcasts::by_genre(name),
+                        Browse::Search(query) => podcasts::search(query),
+                        _ => podcasts::trending(),
+                    }
+                    .map_err(|err| format!("{err:#}"));
+                    store_shows(&pending, gen, result);
+                });
+            }
+        }
+    }
+
+    fn open_show(&self, show: Show) {
+        self.back.set_visible(true);
+        self.header.set_visible(true);
+        *self.episodes.borrow_mut() = None;
+        self.fill_header(&show);
+        self.clear_list();
+        self.more.set_visible(false);
+        self.status.set_text("Loading episodes…");
+        let gen = self.bump();
+        let pending = self.pending.clone();
+        let backend = self.state.backend.read().clone();
+        std::thread::spawn(move || {
+            let result = load_episodes(backend.as_ref(), &show).map(|eps| (show, eps));
+            let mut slot = pending.lock();
+            let keep = slot.as_ref().map(|item| gen >= item.gen).unwrap_or(true);
+            if keep {
+                *slot = Some(Incoming {
+                    gen,
+                    shows: None,
+                    episodes: Some(result.map_err(|err| format!("{err:#}"))),
+                    note: None,
+                });
+            }
+        });
+    }
+
+    fn fill_header(&self, show: &Show) {
+        while let Some(child) = self.header.first_child() {
+            self.header.remove(&child);
+        }
+        let art = gtk4::Image::new();
+        art.set_pixel_size(96);
+        art.set_size_request(96, 96);
+        art.set_icon_name(Some("multimedia-player-symbolic"));
+        bind_cover(&art, show.artwork.as_deref());
+        let text = GtkBox::new(Orientation::Vertical, 4);
+        text.set_hexpand(true);
+        let title = Label::new(Some(&show.title));
+        title.add_css_class("nm-card-title");
+        title.set_halign(Align::Start);
+        title.set_wrap(true);
+        title.set_xalign(0.0);
+        let sub = Label::new(Some(&show.subtitle()));
+        sub.add_css_class("nm-muted");
+        sub.set_halign(Align::Start);
+        sub.set_wrap(true);
+        sub.set_lines(3);
+        sub.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+        sub.set_xalign(0.0);
+        text.append(&title);
+        text.append(&sub);
+        let save = save_button(self, show);
+        self.header.append(&art);
+        self.header.append(&text);
+        self.header.append(&save);
+    }
+
+    fn replace_shows(&self, shows: Vec<Show>, status: &str) {
+        self.clear_list();
+        self.add_show_rows(&shows);
+        *self.shown.borrow_mut() = shows;
+        self.status.set_text(status);
+        self.mark_playing();
+    }
+
+    fn show_episodes(&self, show: Show, episodes: Vec<Episode>) {
+        let shown = podcasts::PAGE.min(episodes.len());
+        self.fill_header(&show);
+        self.back.set_visible(true);
+        self.header.set_visible(true);
+        self.clear_list();
+        self.add_episode_rows(&show, &episodes[..shown]);
+        self.more.set_label("More episodes");
+        self.more.set_visible(shown < episodes.len());
+        let n = episodes.len();
+        self.status.set_text(&format!(
+            "{shown} of {n} episode{} · newest first",
+            plural(n)
+        ));
+        *self.episodes.borrow_mut() = Some(EpisodeList {
+            show,
+            episodes,
+            shown,
+        });
+        self.mark_playing();
+    }
+
+    fn more_episodes(&self) {
+        let mut view = self.episodes.borrow_mut();
+        let Some(list) = view.as_mut() else {
+            return;
+        };
+        let next = (list.shown + podcasts::PAGE).min(list.episodes.len());
+        if next == list.shown {
+            self.more.set_visible(false);
+            return;
+        }
+        let start = list.shown;
+        list.shown = next;
+        let show = list.show.clone();
+        let slice: Vec<Episode> = list.episodes[start..next].to_vec();
+        let total = list.episodes.len();
+        let shown = list.shown;
+        drop(view);
+        self.add_episode_rows(&show, &slice);
+        self.more.set_visible(shown < total);
+        self.status
+            .set_text(&format!("{shown} of {total} episode{} · newest first", plural(total)));
+        self.mark_playing();
+    }
+
+    fn clear_list(&self) {
+        while let Some(row) = self.list.row_at_index(0) {
+            self.list.remove(&row);
+        }
+    }
+
+    fn add_show_rows(&self, shows: &[Show]) {
+        for show in shows {
+            let row = ListBoxRow::new();
+            row.add_css_class("nm-lib-row");
+            let line = row_line();
+            let art = cover_image(48);
+            bind_cover(&art, show.artwork.as_deref());
+            let open = open_button(&show.title, &show.subtitle());
+            let page = self.clone();
+            let chosen = show.clone();
+            open.connect_clicked(move |_| page.open_show(chosen.clone()));
+            let save = save_button(self, show);
+            line.append(&art);
+            line.append(&open);
+            line.append(&save);
+            row.set_child(Some(&line));
+            self.list.append(&row);
+        }
+    }
+
+    fn add_episode_rows(&self, show: &Show, episodes: &[Episode]) {
+        let mut existing = 0;
+        while self.list.row_at_index(existing).is_some() {
+            existing += 1;
+        }
+        for (offset, episode) in episodes.iter().enumerate() {
+            let row = ListBoxRow::new();
+            row.add_css_class("nm-lib-row");
+            let line = row_line();
+            let art = cover_image(48);
+            let art_url = episode.artwork.clone().or_else(|| show.artwork.clone());
+            bind_cover(&art, art_url.as_deref());
+            let open = open_button(&episode.title, &episode.subtitle());
+            let page = self.clone();
+            let index = existing as usize + offset;
+            open.connect_clicked(move |_| page.play_index(index));
+            line.append(&art);
+            line.append(&open);
+            row.set_child(Some(&line));
+            self.list.append(&row);
+        }
+    }
+
+    fn play_index(&self, index: usize) {
+        let view = self.episodes.borrow().clone();
+        let Some(view) = view.as_ref() else {
+            return;
+        };
+        let Some(episode) = view.episodes.get(index) else {
+            return;
+        };
+        let tracks: Vec<Track> = view
+            .episodes
+            .iter()
+            .map(|episode| episode.to_track(&view.show))
+            .collect();
+        self.state.player.set_queue(tracks, index);
+        let track = episode.to_track(&view.show);
+        podcasts::arm_resume(&track.id);
+        self.now.set_text(&episode.title);
+        play_track(&self.state, track);
+        self.mark_playing();
+    }
+
+    fn tune_step(&self, delta: i32) {
+        let current = self.state.player.current();
+        if !current.as_ref().is_some_and(podcasts::is_podcast_track) {
+            self.status.set_text("Pick an episode to start.");
+            return;
+        }
+        let Some(track) = self.state.player.step_clamped(delta) else {
+            self.status.set_text(if delta > 0 {
+                "That's the last episode."
+            } else {
+                "That's the first episode."
+            });
+            return;
+        };
+        podcasts::arm_resume(&track.id);
+        self.now.set_text(&track.title);
+        play_track(&self.state, track);
+        self.reveal_playing();
+        self.mark_playing();
+    }
+
+    fn reveal_playing(&self) {
+        let Some(current) = self.state.player.current() else {
+            return;
+        };
+        let mut view = self.episodes.borrow_mut();
+        let Some(list) = view.as_mut() else {
+            return;
+        };
+        let Some(index) = list
+            .episodes
+            .iter()
+            .position(|episode| episode.to_track(&list.show).id == current.id)
+        else {
+            return;
+        };
+        if index < list.shown {
+            return;
+        }
+        let start = list.shown;
+        list.shown = index + 1;
+        let show = list.show.clone();
+        let slice: Vec<Episode> = list.episodes[start..list.shown].to_vec();
+        drop(view);
+        self.add_episode_rows(&show, &slice);
+        self.more.set_visible(false);
+    }
+
+    fn mark_playing(&self) {
+        let current = self.state.player.current();
+        let current_id = current.as_ref().map(|track| track.id.clone());
+        let episodes = self.episodes.borrow();
+        let mut i = 0;
+        while let Some(row) = self.list.row_at_index(i) {
+            let on = if let Some(list) = episodes.as_ref() {
+                current_id.as_ref().is_some_and(|id| {
+                    list.episodes
+                        .get(i as usize)
+                        .is_some_and(|episode| episode.to_track(&list.show).id == *id)
+                })
+            } else {
+                false
+            };
+            if on {
+                row.add_css_class("nm-station-on");
+            } else {
+                row.remove_css_class("nm-station-on");
+            }
+            i += 1;
+        }
+        drop(episodes);
+        match current {
+            Some(track) if podcasts::is_podcast_track(&track) => {
+                if self.now.text().as_str() != track.title {
+                    self.now.set_text(&track.title);
+                }
+            }
+            _ => {
+                if self.now.text().as_str() != "Not playing" {
+                    self.now.set_text("Not playing");
+                }
+            }
+        }
+    }
+
+    fn apply_incoming(&self, incoming: Incoming) {
+        if let Some(result) = incoming.shows {
+            match result {
+                Ok(shows) => {
+                    let msg = describe(&self.mode.borrow(), shows.len());
+                    self.replace_shows(shows, &msg);
+                }
+                Err(err) => self.status.set_text(&format!("Podcast directory unavailable: {err}")),
+            }
+        }
+        if let Some(result) = incoming.episodes {
+            match result {
+                Ok((show, episodes)) if episodes.is_empty() => {
+                    self.status.set_text("This show has no episodes.");
+                    *self.episodes.borrow_mut() = Some(EpisodeList {
+                        show,
+                        episodes,
+                        shown: 0,
+                    });
+                }
+                Ok((show, episodes)) => self.show_episodes(show, episodes),
+                Err(err) => self.status.set_text(&format!("Could not load episodes: {err}")),
+            }
+        }
+        if let Some(note) = incoming.note {
+            self.status.set_text(&note);
+        }
+    }
+}
+
+impl Clone for EpisodeList {
+    fn clone(&self) -> Self {
+        Self {
+            show: self.show.clone(),
+            episodes: self.episodes.clone(),
+            shown: self.shown,
+        }
+    }
+}
+
+fn store_shows(
+    pending: &Arc<parking_lot::Mutex<Option<Incoming>>>,
+    gen: u64,
+    result: std::result::Result<Vec<Show>, String>,
+) {
+    let mut slot = pending.lock();
+    let keep = slot.as_ref().map(|item| gen >= item.gen).unwrap_or(true);
+    if keep {
+        *slot = Some(Incoming {
+            gen,
+            shows: Some(result),
+            episodes: None,
+            note: None,
+        });
+    }
+}
+
+fn load_episodes(
+    backend: Option<&Arc<dyn crate::backend::MediaBackend>>,
+    show: &Show,
+) -> anyhow::Result<Vec<Episode>> {
+    if let Some(id) = show.id.strip_prefix("server:") {
+        if let Some(backend) = backend {
+            if let Ok(found) = backend.podcast_episodes(id) {
+                let mut episodes: Vec<Episode> = found
+                    .into_iter()
+                    .filter_map(|episode| Episode::from_server(id, &episode, show.artwork.clone()))
+                    .collect();
+                if !episodes.is_empty() {
+                    podcasts::sort_newest(&mut episodes);
+                    return Ok(episodes);
+                }
+            }
+        }
+    }
+    podcasts::episodes_for_feed(show)
+}
+
+fn describe(mode: &Browse, n: usize) -> String {
+    match mode {
+        Browse::Genre(name) => format!("{n} {name} shows"),
+        Browse::Search(query) => format!("{n} matches for {query}"),
+        Browse::Favorites => format!("{n} saved show{}", plural(n)),
+        Browse::Server => format!("{n} show{} on this server", plural(n)),
+        Browse::Trending => format!("{n} trending shows"),
+    }
+}
+
+fn plural(n: usize) -> &'static str {
+    if n == 1 {
+        ""
+    } else {
+        "s"
+    }
+}
+
+fn feed_key(url: &str) -> String {
+    url.trim().trim_end_matches('/').to_ascii_lowercase()
+}
+
+fn row_line() -> GtkBox {
+    let line = GtkBox::new(Orientation::Horizontal, 10);
+    line.set_margin_top(6);
+    line.set_margin_bottom(6);
+    line.set_margin_start(8);
+    line.set_margin_end(8);
+    line
+}
+
+fn cover_image(px: i32) -> gtk4::Image {
+    let art = gtk4::Image::new();
+    art.add_css_class("nm-lib-cover");
+    art.set_pixel_size(px);
+    art.set_size_request(px, px);
+    art.set_icon_name(Some("multimedia-player-symbolic"));
+    art
+}
+
+fn open_button(title: &str, subtitle: &str) -> Button {
+    let button = Button::new();
+    button.add_css_class("nm-open");
+    button.set_hexpand(true);
+    button.set_has_frame(false);
+    button.set_child(Some(&text_column(title, subtitle)));
+    button.update_property(&[gtk4::accessible::Property::Label(title)]);
+    button
+}
+
+fn text_column(title: &str, subtitle: &str) -> GtkBox {
+    let text = GtkBox::new(Orientation::Vertical, 2);
+    text.set_hexpand(true);
+    let name = Label::new(Some(title));
+    name.add_css_class("nm-lib-label");
+    name.set_halign(Align::Start);
+    name.set_hexpand(true);
+    name.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+    name.set_xalign(0.0);
+    let sub = Label::new(Some(subtitle));
+    sub.add_css_class("nm-muted");
+    sub.set_halign(Align::Start);
+    sub.set_hexpand(true);
+    sub.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+    sub.set_xalign(0.0);
+    text.append(&name);
+    text.append(&sub);
+    text
+}
+
+fn save_button(page: &PodcastPage, show: &Show) -> Button {
+    let saved = page.is_saved(show);
+    let button = Button::with_label(if saved { "Saved" } else { "Save" });
+    button.add_css_class("nm-save");
+    if saved {
+        button.add_css_class("saved");
+    }
+    button.set_valign(Align::Center);
+    button.set_tooltip_text(Some("Save this show"));
+    let page = page.clone();
+    let show = show.clone();
+    button.connect_clicked(move |button| {
+        let now = page.toggle_saved(&show);
+        button.set_label(if now { "Saved" } else { "Save" });
+        if now {
+            button.add_css_class("saved");
+        } else {
+            button.remove_css_class("saved");
+        }
+    });
+    button
+}
+
+pub(crate) fn build_podcast_page(state: Rc<AppState>) -> PodcastPage {
+    let root = GtkBox::new(Orientation::Vertical, 8);
+    root.add_css_class("nm-main");
+    root.set_margin_top(8);
+    root.set_margin_start(16);
+    root.set_margin_end(16);
+    root.set_margin_bottom(8);
+
+    let heading = Label::new(Some("Podcasts"));
+    heading.add_css_class("nm-heading");
+    heading.set_halign(Align::Start);
+    let blurb = Label::new(Some(
+        "Discover shows on Apple Podcasts and Podcast Index. Open a show to pick an episode. Previous and Next move through that show. Save keeps it on this machine.",
+    ));
+    blurb.add_css_class("nm-muted");
+    blurb.set_halign(Align::Start);
+    blurb.set_wrap(true);
+    blurb.set_xalign(0.0);
+
+    let tune = GtkBox::new(Orientation::Horizontal, 8);
+    tune.add_css_class("nm-tune");
+    let prev = Button::with_label("Previous");
+    prev.add_css_class("nm-chip");
+    prev.set_widget_name("nm-podcast-prev");
+    let now = Label::new(Some("Not playing"));
+    now.add_css_class("nm-card-title");
+    now.set_widget_name("nm-podcast-now");
+    now.set_hexpand(true);
+    now.set_halign(Align::Center);
+    now.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+    let next = Button::with_label("Next");
+    next.add_css_class("nm-chip");
+    next.set_widget_name("nm-podcast-next");
+    tune.append(&prev);
+    tune.append(&now);
+    tune.append(&next);
+
+    let search_row = GtkBox::new(Orientation::Horizontal, 8);
+    let search = Entry::new();
+    search.add_css_class("nm-search");
+    search.set_placeholder_text(Some("Show, host, or description"));
+    search.set_hexpand(true);
+    search.set_widget_name("nm-podcast-search");
+    let search_btn = Button::with_label("Search");
+    search_btn.add_css_class("nm-chip");
+    search_btn.set_widget_name("nm-podcast-search-btn");
+    search_row.append(&search);
+    search_row.append(&search_btn);
+
+    let chips_box = GtkBox::new(Orientation::Horizontal, 6);
+    let chips_scroll = ScrolledWindow::builder().child(&chips_box).build();
+    chips_scroll.set_policy(gtk4::PolicyType::Automatic, gtk4::PolicyType::Never);
+    chips_scroll.set_min_content_height(48);
+
+    let back = Button::with_label("Back");
+    back.add_css_class("nm-chip");
+    back.set_halign(Align::Start);
+    back.set_visible(false);
+    back.set_widget_name("nm-podcast-back");
+
+    let header = GtkBox::new(Orientation::Horizontal, 12);
+    header.set_visible(false);
+
+    let status = Label::new(Some("Looking up podcasts…"));
+    status.add_css_class("nm-muted");
+    status.set_halign(Align::Start);
+    status.set_wrap(true);
+    status.set_xalign(0.0);
+    status.set_widget_name("nm-podcast-status");
+
+    let list = ListBox::new();
+    list.set_selection_mode(gtk4::SelectionMode::None);
+    list.set_activate_on_single_click(true);
+    list.add_css_class("nm-library-list");
+    list.set_widget_name("nm-podcast-list");
+    let list_scroll = ScrolledWindow::builder()
+        .child(&list)
+        .vexpand(true)
+        .hexpand(true)
+        .build();
+
+    let more = Button::with_label("More episodes");
+    more.add_css_class("nm-chip");
+    more.set_halign(Align::Start);
+    more.set_visible(false);
+    more.set_widget_name("nm-podcast-more");
+
+    root.append(&heading);
+    root.append(&blurb);
+    root.append(&tune);
+    root.append(&search_row);
+    root.append(&chips_scroll);
+    root.append(&back);
+    root.append(&header);
+    root.append(&status);
+    root.append(&list_scroll);
+    root.append(&more);
+
+    let page = PodcastPage {
+        state,
+        root,
+        list: list.clone(),
+        status: status.clone(),
+        now: now.clone(),
+        more: more.clone(),
+        back: back.clone(),
+        header: header.clone(),
+        favorites: Rc::new(RefCell::new(podcasts::load_favorites())),
+        server: Rc::new(RefCell::new(Vec::new())),
+        shown: Rc::new(RefCell::new(Vec::new())),
+        episodes: Rc::new(RefCell::new(None)),
+        mode: Rc::new(RefCell::new(Browse::Trending)),
+        generation: Rc::new(Cell::new(0)),
+        chips: Rc::new(RefCell::new(Vec::new())),
+        pending: Arc::new(parking_lot::Mutex::new(None)),
+    };
+
+    let ignore = Rc::new(Cell::new(false));
+    let search_gen = Rc::new(Cell::new(0u64));
+    let mut specs = vec![
+        ("trending".into(), "Trending".into(), Browse::Trending),
+        ("favorites".into(), "Favorites".into(), Browse::Favorites),
+        ("server".into(), "This server".into(), Browse::Server),
+    ];
+    for name in podcasts::genre_names() {
+        specs.push((
+            format!("genre:{name}"),
+            (*name).to_string(),
+            Browse::Genre((*name).to_string()),
+        ));
+    }
+    for (key, label, mode) in specs {
+        let button = Button::with_label(&label);
+        button.add_css_class("nm-chip");
+        let page_b = page.clone();
+        let ignore_b = ignore.clone();
+        let search_gen_b = search_gen.clone();
+        let search_b = search.clone();
+        let chip_key = key.clone();
+        button.connect_clicked(move |_| {
+            search_gen_b.set(search_gen_b.get().wrapping_add(1));
+            ignore_b.set(true);
+            search_b.set_text("");
+            ignore_b.set(false);
+            *page_b.mode.borrow_mut() = mode.clone();
+            page_b.set_active_chip(&chip_key);
+            page_b.start_shows(false);
+        });
+        chips_box.append(&button);
+        page.chips.borrow_mut().push((key, button));
+    }
+
+    let run_search: Rc<dyn Fn()> = Rc::new({
+        let page = page.clone();
+        let search = search.clone();
+        move || {
+            let query = search.text().trim().to_string();
+            if query.is_empty() {
+                *page.mode.borrow_mut() = Browse::Trending;
+                page.set_active_chip("trending");
+            } else {
+                *page.mode.borrow_mut() = Browse::Search(query);
+                page.set_active_chip("");
+            }
+            page.start_shows(false);
+        }
+    });
+    {
+        let run_search = Rc::clone(&run_search);
+        let search_gen = search_gen.clone();
+        let ignore = ignore.clone();
+        search.connect_changed(move |_| {
+            if ignore.get() {
+                return;
+            }
+            let gen = search_gen.get().wrapping_add(1);
+            search_gen.set(gen);
+            let run_search = Rc::clone(&run_search);
+            let search_gen = search_gen.clone();
+            glib::timeout_add_local_once(Duration::from_millis(400), move || {
+                if search_gen.get() == gen {
+                    run_search();
+                }
+            });
+        });
+    }
+    {
+        let run_search = Rc::clone(&run_search);
+        let search_gen = search_gen.clone();
+        search_btn.connect_clicked(move |_| {
+            search_gen.set(search_gen.get().wrapping_add(1));
+            run_search();
+        });
+    }
+    {
+        let run_search = Rc::clone(&run_search);
+        let search_gen = search_gen.clone();
+        search.connect_activate(move |_| {
+            search_gen.set(search_gen.get().wrapping_add(1));
+            run_search();
+        });
+    }
+    {
+        let page = page.clone();
+        back.connect_clicked(move |_| page.start_shows(false));
+    }
+    {
+        let page = page.clone();
+        prev.connect_clicked(move |_| page.tune_step(-1));
+    }
+    {
+        let page = page.clone();
+        next.connect_clicked(move |_| page.tune_step(1));
+    }
+    {
+        let page = page.clone();
+        more.connect_clicked(move |_| page.more_episodes());
+    }
+    {
+        let page = page.clone();
+        list.connect_row_activated(move |_, row| {
+            let index = row.index();
+            if index < 0 {
+                return;
+            }
+            let index = index as usize;
+            if page.episodes.borrow().is_some() {
+                page.play_index(index);
+            } else if let Some(show) = page.shown.borrow().get(index).cloned() {
+                page.open_show(show);
+            }
+        });
+    }
+    {
+        let page = page.clone();
+        glib::timeout_add_local(Duration::from_millis(200), move || {
+            if let Some(incoming) = page.pending.lock().take() {
+                if incoming.gen == page.generation.get() || incoming.note.is_some() {
+                    page.apply_incoming(incoming);
+                }
+            }
+            page.mark_playing();
+            glib::ControlFlow::Continue
+        });
+    }
+
+    page.set_active_chip("trending");
+    page.refresh_fav_chip();
+    page.start_shows(false);
+    page
+}

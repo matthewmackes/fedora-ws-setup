@@ -1,0 +1,26 @@
+# System defaults for MDE 2026 (compiled next to org.mde.gschema.xml).
+[org.mde]
+accent='#0078d4'
+color-scheme='prefer-light'
+animations=true
+panel-height=48
+
+[org.mde.taskbar]
+alignment='center'
+autohide=false
+show-task-view=true
+show-search=false
+
+[org.mde.start]
+show-recommended=true
+
+[org.mde.window-layout]
+default-layout='default'
+gaps-inner=8
+gaps-outer=0
+titlebar-style='pixel'
+smart-borders='off'
+focus-follows-mouse='no'
+mouse-warping='none'
+focus-on-activation='focus'
+rules-preset='win11'

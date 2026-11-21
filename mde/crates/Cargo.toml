@@ -1,0 +1,64 @@
+[workspace]
+resolver = "2"
+members = [
+    "mde-config",
+    "mde-theme",
+    "mde-protocol",
+    "mde-privileged",
+    "mde-comp",
+    "mde-shell",
+    "mde-control",
+    "mde-mmc",
+    "mde-mmc-agent",
+    "mde-session",
+    "mde-neighbourhood",
+    "mde-greeter",
+    "mde-anvil",
+    "mde-fidelity",
+    "mde-files",
+    "smithay-drm-extras",
+    # mde-music remains GTK4 for now; build with: cargo build -p mde-music
+    # "mde-music",
+]
+default-members = [
+    "mde-config",
+    "mde-theme",
+    "mde-protocol",
+    "mde-privileged",
+    "mde-comp",
+    "mde-shell",
+    "mde-control",
+    "mde-mmc",
+    "mde-mmc-agent",
+    "mde-session",
+    "mde-neighbourhood",
+    "mde-greeter",
+    "mde-anvil",
+    "mde-fidelity",
+    "mde-files",
+]
+
+[workspace.package]
+version = "2026.0.0"
+edition = "2021"
+license = "MIT"
+authors = ["Mackes Desktop Environment"]
+repository = "https://github.com/local/mde"
+
+[workspace.dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+thiserror = "2"
+dirs = "6"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util", "net", "process", "signal"] }
+iced = { version = "0.13", features = ["tokio", "debug"] }
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+zbus = "5"
+ashpd = { version = "0.14", default-features = false, features = ["tokio", "screencast", "screenshot"] }
+mde-config = { path = "mde-config" }
+mde-theme = { path = "mde-theme" }
+mde-protocol = { path = "mde-protocol" }

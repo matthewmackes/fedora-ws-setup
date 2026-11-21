@@ -1,0 +1,39 @@
+/* Full-screen installer chrome matching Anaconda's hub. */
+
+#nav-box {
+    background-color: #2f4265;
+    color: white;
+}
+
+#anaconda-name-label,
+#anaconda-distro-label,
+#anaconda-layout-label {
+    color: white;
+}
+
+#anaconda-name-label {
+    font-size: 18px;
+    font-weight: bold;
+}
+
+#anaconda-distro-label {
+    font-size: 14px;
+}
+
+.ws-note {
+    font-style: italic;
+    color: #666666;
+}
+
+.ws-body {
+    font-size: 15px;
+}
+
+.ws-hint {
+    color: #555555;
+}
+
+.ws-log {
+    font-family: monospace;
+    font-size: 12px;
+}

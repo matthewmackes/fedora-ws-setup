@@ -1,0 +1,26 @@
+# Durations stay 0 until frame captures fit a curve.
+status = "unmeasured"
+
+[start-open]
+duration_ms = 0
+cubic_bezier = [0.0, 0.0, 1.0, 1.0]
+
+[start-close]
+duration_ms = 0
+cubic_bezier = [0.0, 0.0, 1.0, 1.0]
+
+[quick-settings-open]
+duration_ms = 0
+cubic_bezier = [0.0, 0.0, 1.0, 1.0]
+
+[notification-center-open]
+duration_ms = 0
+cubic_bezier = [0.0, 0.0, 1.0, 1.0]
+
+[snap-flyout-open]
+duration_ms = 0
+cubic_bezier = [0.0, 0.0, 1.0, 1.0]
+
+[toast-in]
+duration_ms = 0
+cubic_bezier = [0.0, 0.0, 1.0, 1.0]

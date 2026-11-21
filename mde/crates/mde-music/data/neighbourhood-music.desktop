@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Neighbourhood Music
+GenericName=Music Player
+Comment=Spotify-like music player for Jellyfin and Airsonic
+Exec=/usr/bin/neighbourhood-music
+TryExec=/usr/bin/neighbourhood-music
+Icon=multimedia-audio-player
+Terminal=false
+Categories=AudioVideo;Audio;Player;GTK;
+Keywords=music;spotify;jellyfin;airsonic;navidrome;audio;
+StartupNotify=true
+StartupWMClass=neighbourhood-music

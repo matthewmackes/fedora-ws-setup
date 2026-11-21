@@ -1,0 +1,16 @@
+[package]
+name = "mde-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Typed compositor ↔ shell IPC for MDE (Unix socket + legacy file shim)"
+publish = false
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

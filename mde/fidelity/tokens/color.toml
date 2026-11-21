@@ -1,0 +1,51 @@
+# Current product palette plus structural high-contrast roles.
+# status is unmeasured: these are not extracted from a Windows capture.
+status = "unmeasured"
+
+[light]
+neutral = ["#ffffff", "#f1f1f1", "#e2e2e2", "#d4d4d4", "#c6c6c6", "#b7b7b7", "#a9a9a9", "#9b9b9b", "#8c8c8c", "#7e7e7e", "#707070", "#626262", "#535353", "#454545", "#373737", "#282828", "#1a1a1a"]
+fill_solid = "#f3f3f3"
+fill_subtle = "#f9f9f9"
+fill_control = "#ffffff"
+stroke_default = "#e5e5e5"
+stroke_control = "#d1d1d1"
+text_primary = "#1a1a1a"
+text_secondary = "#5d5d5d"
+text_disabled = "#9a9a9a"
+danger = "#c42b1c"
+
+[dark]
+neutral = ["#ffffff", "#f1f1f1", "#e3e3e3", "#d5d5d5", "#c7c7c7", "#b9b9b9", "#ababab", "#9d9d9d", "#909090", "#828282", "#747474", "#666666", "#585858", "#4a4a4a", "#3c3c3c", "#2e2e2e", "#202020"]
+fill_solid = "#202020"
+fill_subtle = "#2c2c2c"
+fill_control = "#3f3f3f"
+stroke_default = "#3f3f3f"
+stroke_control = "#5a5a5a"
+text_primary = "#ffffff"
+text_secondary = "#c5c5c5"
+text_disabled = "#8a8a8a"
+danger = "#ff99a4"
+
+[hc-black]
+neutral = ["#ffffff", "#efefef", "#dfdfdf", "#cfcfcf", "#bfbfbf", "#afafaf", "#9f9f9f", "#8f8f8f", "#808080", "#707070", "#606060", "#505050", "#404040", "#303030", "#202020", "#101010", "#000000"]
+fill_solid = "#000000"
+fill_subtle = "#000000"
+fill_control = "#000000"
+stroke_default = "#ffffff"
+stroke_control = "#ffffff"
+text_primary = "#ffffff"
+text_secondary = "#ffffff"
+text_disabled = "#ffffff"
+danger = "#ff5555"
+
+[hc-white]
+neutral = ["#000000", "#101010", "#202020", "#303030", "#404040", "#505050", "#606060", "#707070", "#808080", "#8f8f8f", "#9f9f9f", "#afafaf", "#bfbfbf", "#cfcfcf", "#dfdfdf", "#efefef", "#ffffff"]
+fill_solid = "#ffffff"
+fill_subtle = "#ffffff"
+fill_control = "#ffffff"
+stroke_default = "#000000"
+stroke_control = "#000000"
+text_primary = "#000000"
+text_secondary = "#000000"
+text_disabled = "#000000"
+danger = "#c42b1c"

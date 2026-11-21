@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Neon Tech Penguin
+Description=Mackes Fedora Linux boot splash
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/neon-tech-penguin
+ScriptFile=/usr/share/plymouth/themes/neon-tech-penguin/neon-tech-penguin.script

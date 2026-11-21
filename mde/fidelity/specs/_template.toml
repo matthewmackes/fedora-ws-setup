@@ -1,0 +1,31 @@
+schema = 1
+surface = "taskbar"
+revision = 0
+status = "unmeasured" # unmeasured | measured
+reference_build = ""
+dpi_basis = 96
+
+[capture]
+logical = [1920, 1080]
+scales = [1.0, 1.5]
+themes = ["light", "dark", "hc-black", "hc-white"]
+
+[[states]]
+id = "rest"
+refs = [] # paths filled by the measure tool after a human capture
+
+[[metrics]]
+id = "bar.height"
+value_px = 0
+tolerance_px = 1
+source = "unmeasured" # file + pixel note
+
+[[regions]]
+id = "chrome"
+rect = [0, 0, 0, 0]
+ssim_min = 0.93
+mae_max = 0.012
+compare = "reference" # reference | golden | ignore
+
+[motion]
+actions = [] # { id, duration_ms, easing }

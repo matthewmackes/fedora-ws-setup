@@ -1,0 +1,6 @@
+id = "C5"
+status = "blocked"
+owner = "agent"
+reason = "spec status is unmeasured"
+surfaces = ["alt-tab", "task-view"]
+missing = "mde/fidelity/missing-captures.txt"

@@ -1,0 +1,11 @@
+[Unit]
+Description=Re-apply devices disabled in MDE Device Manager
+After=systemd-udevd.service
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/mde-mmc-helper device-reapply
+
+[Install]
+WantedBy=multi-user.target

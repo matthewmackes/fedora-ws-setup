@@ -1,0 +1,14 @@
+Selawik
+
+SPDX: OFL-1.1
+Files on this machine: /usr/share/fonts/mde/Selawik/
+License file: /usr/share/fonts/mde/Selawik/LICENSE.txt
+  Copyright 2015, Microsoft Corporation, with Reserved Font Name Selawik.
+  Licensed under the SIL Open Font License, Version 1.1.
+
+Allowed as the UI face. Do not ship Segoe UI.
+
+Cascadia Mono (OFL) is the mono face already named by mde-theme:
+  /usr/share/fonts/cascadia-mono-fonts/CascadiaMono-Regular.otf
+
+Semibold file present: selawksb.ttf. The theme loader includes it.

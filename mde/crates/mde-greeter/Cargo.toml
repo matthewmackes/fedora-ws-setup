@@ -1,0 +1,52 @@
+[package]
+name = "mde-greeter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "MDE graphical greeter (Win11-style iced sign-in for greetd)"
+
+[features]
+default = ["ui", "lock"]
+# iced UI binary. Disable when only the greetd client lib is needed (mde-comp).
+ui = [
+    "dep:iced",
+    "dep:chrono",
+    "dep:tracing",
+    "dep:tracing-subscriber",
+    "dep:tokio",
+    "dep:mde-theme",
+    "mde-theme/iced",
+]
+# ext-session-lock client (`mde-lock`). Optional so greeter UI can build alone.
+lock = [
+    "dep:smithay-client-toolkit",
+    "dep:wayland-client",
+    "dep:chrono",
+    "dep:libc",
+]
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["clock"], optional = true }
+libc = { version = "0.2", optional = true }
+# SCTK 0.20 includes session_lock always (no separate feature).
+smithay-client-toolkit = { version = "0.20", optional = true }
+wayland-client = { version = "0.31", optional = true }
+mde-theme = { workspace = true, optional = true }
+mde-config = { workspace = true }
+iced = { workspace = true, optional = true, features = ["tokio"] }
+tracing = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+
+[[bin]]
+name = "mde-greeter"
+path = "src/main.rs"
+required-features = ["ui"]
+
+[[bin]]
+name = "mde-lock"
+path = "src/lock.rs"
+required-features = ["lock"]

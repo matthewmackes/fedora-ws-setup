@@ -1,0 +1,6 @@
+# Same numbers as the existing FLYOUT_RADIUS / CONTROL_RADIUS constants.
+# Not a measured Win11 radius.
+status = "unmeasured"
+control = 8
+overlay = 12
+window = 8

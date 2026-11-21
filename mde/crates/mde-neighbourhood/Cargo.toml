@@ -1,0 +1,14 @@
+[package]
+name = "mde-neighbourhood"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Network Neighbourhood (SMB/SSH/NFS/WebDAV) — iced/platform entry"
+
+[[bin]]
+name = "mde-neighbourhood"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+mde-theme = { workspace = true }

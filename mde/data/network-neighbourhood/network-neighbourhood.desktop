@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Network Neighbourhood
+GenericName=Network Places
+Comment=Browse and map SMB, SSH, NFS, WebDAV, Video and Audio network places
+Exec=network-neighbourhood
+Icon=network-workgroup
+Terminal=false
+Categories=Network;FileTransfer;Filesystem;
+Keywords=network;smb;ssh;nfs;webdav;jellyfin;airsonic;shares;neighbourhood;neighborhood;
+StartupNotify=true
+X-MDE-App=network-neighbourhood

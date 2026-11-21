@@ -1,0 +1,35 @@
+schema = 1
+surface = "widgets"
+revision = 0
+status = "unmeasured"
+reference_build = ""
+dpi_basis = 96
+
+[capture]
+logical = [1920, 1080]
+scales = [1.0, 1.5]
+themes = ["light", "dark", "hc-black", "hc-white"]
+
+[[states]]
+id = "open"
+refs = []
+
+[[states]]
+id = "hover-card"
+refs = []
+
+[[metrics]]
+id = "widgets.unmeasured"
+value_px = 0
+tolerance_px = 1
+source = "unmeasured"
+
+[[regions]]
+id = "chrome"
+rect = [0, 0, 0, 0]
+ssim_min = 0.93
+mae_max = 0.012
+compare = "reference"
+
+[motion]
+actions = []

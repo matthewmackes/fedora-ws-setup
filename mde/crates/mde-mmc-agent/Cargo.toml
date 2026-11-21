@@ -1,0 +1,19 @@
+[package]
+name = "mde-mmc-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Remote admin agent for mde-mmc (W476)"
+
+[[bin]]
+name = "mde-mmc-agent"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true }

@@ -1,0 +1,17 @@
+# 4 px grid is structural. Named aliases are unset until a spec measures them.
+status = "unmeasured"
+
+[grid]
+"1" = 4
+"2" = 8
+"3" = 12
+"4" = 16
+"5" = 20
+"6" = 24
+"7" = 28
+"8" = 32
+
+[alias]
+taskbar_pad_x = 0
+flyout_pad = 0
+flyout_gap = 0
