@@ -117,19 +117,19 @@ fn build(app: &Application) -> Result<()> {
         mini_player: Cell::new(false),
     });
 
+    let (init_w, init_h) = preferred_window_size();
     let win = ApplicationWindow::builder()
         .application(app)
         .title("Neighbourhood Music")
-        .default_width(1280)
-        .default_height(800)
+        .default_width(init_w)
+        .default_height(init_h)
+        .resizable(true)
         .decorated(true)
         .build();
     win.add_css_class("nm-window");
-    // Compositor SSD + in-app chrome for min/max/close and mini-player (Q7).
+    // MDE: compositor SSD title bars only (min/max/close). Mini-player lives in the bar.
 
     let root = GtkBox::new(Orientation::Vertical, 0);
-    let chrome = build_window_chrome(win.clone(), state.clone());
-    root.append(&chrome);
 
     let repair_banner = build_repair_banner();
     root.append(&repair_banner);
@@ -159,6 +159,10 @@ fn build(app: &Application) -> Result<()> {
 
     root.append(&stack);
     win.set_child(Some(&root));
+    // On small displays, open maximized so content always fits the work area.
+    if should_start_maximized() {
+        win.maximize();
+    }
     win.present();
 
     if let Some(server) = startup {
@@ -391,15 +395,11 @@ fn reconnect_server(state: Rc<AppState>, stack: Stack, server: ServerTarget) {
         match result {
             Ok(backend) => activate_server(&state, &stack, server.clone(), backend),
             Err(err) => {
+                // Don't block startup with a modal — fall back to the picker.
+                tracing::warn!(error = %err, "auto-reconnect failed; showing server picker");
                 *state.backend.write() = None;
                 *state.server.write() = None;
                 stack.set_visible_child_name("picker");
-                let dialog = gtk4::AlertDialog::builder()
-                    .message("Could not reconnect")
-                    .detail(err)
-                    .modal(true)
-                    .build();
-                dialog.show(stack.root().and_downcast_ref::<gtk4::Window>());
             }
         }
         glib::ControlFlow::Break
@@ -469,8 +469,9 @@ fn build_picker(state: Rc<AppState>, stack: Stack) -> GtkBox {
         list.append(&row);
     }
     let scroll = ScrolledWindow::builder()
-        .min_content_height(220)
-        .min_content_width(640)
+        .min_content_height(180)
+        .min_content_width(420)
+        .hexpand(true)
         .child(&list)
         .build();
     page.append(&scroll);
@@ -2474,15 +2475,26 @@ fn build_player_bar(
         let st = state.clone();
         let browse_body = browse_body.clone();
         let outer = outer.clone();
-        mini_btn.connect_clicked(move |_| {
+        mini_btn.connect_clicked(move |btn| {
             let mini = !st.mini_player.get();
             st.mini_player.set(mini);
             browse_body.set_visible(!mini);
-            // Keep player bar; hide chrome extras via class.
             if mini {
                 outer.add_css_class("nm-mini");
             } else {
                 outer.remove_css_class("nm-mini");
+            }
+            if let Some(win) = btn
+                .root()
+                .and_then(|r| r.downcast::<ApplicationWindow>().ok())
+            {
+                win.unmaximize();
+                if mini {
+                    win.set_default_size(420, 120);
+                } else {
+                    let (w, h) = preferred_window_size();
+                    win.set_default_size(w, h);
+                }
             }
         });
     }
@@ -3049,50 +3061,40 @@ fn fill_lyrics(state: &AppState, box_: &GtkBox, track: &Track) {
     box_.append(&l);
 }
 
-fn build_window_chrome(win: ApplicationWindow, state: Rc<AppState>) -> GtkBox {
-    let bar = GtkBox::new(Orientation::Horizontal, 8);
-    bar.add_css_class("nm-titlebar");
-    let title = Label::new(Some("Neighbourhood Music"));
-    title.add_css_class("nm-titlebar-title");
-    title.set_halign(Align::Start);
-    title.set_hexpand(true);
-    let min = Button::with_label("—");
-    min.add_css_class("nm-icon");
-    let max = Button::with_label("□");
-    max.add_css_class("nm-icon");
-    let close = Button::with_label("✕");
-    close.add_css_class("nm-close");
-    let win_m = win.clone();
-    min.connect_clicked(move |_| win_m.minimize());
-    let win_x = win.clone();
-    max.connect_clicked(move |_| {
-        if win_x.is_maximized() {
-            win_x.unmaximize();
-        } else {
-            win_x.maximize();
-        }
-    });
-    let win_c = win.clone();
-    close.connect_clicked(move |_| win_c.close());
-    let mini = Button::with_label("Mini player");
-    mini.add_css_class("nm-nav-btn");
-    let st = state.clone();
-    let win_mini = win.clone();
-    mini.connect_clicked(move |_| {
-        let on = !st.mini_player.get();
-        st.mini_player.set(on);
-        if on {
-            win_mini.set_default_size(420, 96);
-        } else {
-            win_mini.set_default_size(1280, 800);
-        }
-    });
-    bar.append(&title);
-    bar.append(&mini);
-    bar.append(&min);
-    bar.append(&max);
-    bar.append(&close);
-    bar
+fn preferred_window_size() -> (i32, i32) {
+    let Some(display) = gtk4::gdk::Display::default() else {
+        return (1024, 640);
+    };
+    let monitors = display.monitors();
+    let Some(monitor) = monitors
+        .item(0)
+        .and_then(|obj| obj.downcast::<gtk4::gdk::Monitor>().ok())
+    else {
+        return (1024, 640);
+    };
+    let geo = monitor.geometry();
+    // Leave room for MDE taskbar / SSD chrome; never exceed ~85% of the work area.
+    let w = ((geo.width() as f64) * 0.85)
+        .clamp(720.0, 1200.0) as i32;
+    let h = ((geo.height() as f64) * 0.80)
+        .clamp(480.0, 760.0) as i32;
+    (w, h)
+}
+
+fn should_start_maximized() -> bool {
+    let Some(display) = gtk4::gdk::Display::default() else {
+        return false;
+    };
+    let monitors = display.monitors();
+    let Some(monitor) = monitors
+        .item(0)
+        .and_then(|obj| obj.downcast::<gtk4::gdk::Monitor>().ok())
+    else {
+        return false;
+    };
+    let geo = monitor.geometry();
+    // Tablets / small laptops: open maximized so the UI always fits.
+    geo.width() <= 1366 || geo.height() <= 800
 }
 
 fn build_repair_banner() -> GtkBox {
@@ -3116,16 +3118,20 @@ fn build_repair_banner() -> GtkBox {
     let bar_t = bar.clone();
     glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
         let status = ytm::repair::current_status();
-        let active = ytm::repair::is_repairing()
-            || matches!(
-                status.phase,
-                ytm::repair::RepairPhase::Failed(_) | ytm::repair::RepairPhase::RolledBack
-            );
-        bar_t.set_visible(active || !status.message.is_empty());
-        if !status.message.is_empty() {
+        let repairing = ytm::repair::is_repairing();
+        let failed = matches!(
+            status.phase,
+            ytm::repair::RepairPhase::Failed(_) | ytm::repair::RepairPhase::RolledBack
+        );
+        bar_t.set_visible(repairing || failed);
+        if repairing {
+            if status.message.is_empty() {
+                label_t.set_text("Repairing YouTube Music access…");
+            } else {
+                label_t.set_text(&format!("YouTube Music: {}", status.message));
+            }
+        } else if failed && !status.message.is_empty() {
             label_t.set_text(&format!("YouTube Music: {}", status.message));
-        } else if ytm::repair::is_repairing() {
-            label_t.set_text("Repairing YouTube Music access…");
         }
         glib::ControlFlow::Continue
     });

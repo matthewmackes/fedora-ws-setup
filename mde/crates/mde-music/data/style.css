@@ -26,11 +26,11 @@ window.nm-window {
 }
 .nm-album-hero {
   padding: 24px;
-  background-image: linear-gradient(180deg, alpha(var(--nm-accent, #5eb1ff), 0.25), #1b1d21);
+  background-image: linear-gradient(180deg, #2a3a4a, #1b1d21);
   border-radius: 12px;
 }
 .nm-frost-tracks {
-  background-color: alpha(#0e1014, 0.72);
+  background-color: rgba(14, 16, 20, 0.72);
   border-radius: 12px;
   padding: 12px;
   margin-top: 8px;
@@ -104,7 +104,7 @@ window.nm-window list.nm-server-list row label {
 
 .nm-sidebar {
   background-color: #000000;
-  min-width: 240px;
+  min-width: 180px;
   padding: 12px;
 }
 
