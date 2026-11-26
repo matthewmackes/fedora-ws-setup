@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 pub enum BackendKind {
     Jellyfin,
     Subsonic,
+    YoutubeMusic,
 }
 
 impl BackendKind {
@@ -12,8 +13,28 @@ impl BackendKind {
         match self {
             Self::Jellyfin => "Jellyfin",
             Self::Subsonic => "Airsonic / Subsonic",
+            Self::YoutubeMusic => "YouTube Music",
         }
     }
+
+    pub fn badge(self) -> &'static str {
+        match self {
+            Self::Jellyfin => "JF",
+            Self::Subsonic => "SS",
+            Self::YoutubeMusic => "YT",
+        }
+    }
+}
+
+/// Where a catalog item came from (unified library).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceKind {
+    #[default]
+    Server,
+    YoutubeMusic,
+    Local,
+    Merged,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,6 +65,11 @@ pub struct Album {
     pub year: Option<i32>,
     pub cover_url: Option<String>,
     pub track_count: Option<u32>,
+    #[serde(default)]
+    pub source: SourceKind,
+    /// Alternate source ids when hard-merged (e.g. YTM fills gaps).
+    #[serde(default)]
+    pub alt_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -60,7 +86,17 @@ pub struct Track {
     pub stream_url: String,
     pub content_type: Option<String>,
     pub bit_rate: Option<u32>,
+    /// Sample rate Hz when known (audiophile column).
+    #[serde(default)]
+    pub sample_rate: Option<u32>,
+    /// Container / codec label (flac, opus, m4a, …).
+    #[serde(default)]
+    pub format: Option<String>,
     pub liked: bool,
+    #[serde(default)]
+    pub source: SourceKind,
+    #[serde(default)]
+    pub video_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

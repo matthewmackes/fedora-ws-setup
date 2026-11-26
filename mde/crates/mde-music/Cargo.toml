@@ -3,7 +3,7 @@ name = "mde-music"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Neighbourhood Music — Spotify-like client for Jellyfin and Airsonic"
+description = "Neighbourhood Music — network music client for Jellyfin, Subsonic, and YouTube Music"
 authors.workspace = true
 
 [[bin]]

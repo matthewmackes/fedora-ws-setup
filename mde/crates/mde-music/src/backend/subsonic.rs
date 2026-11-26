@@ -250,7 +250,18 @@ impl SubsonicBackend {
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
             bit_rate: t.get("bitRate").and_then(|v| v.as_u64()).map(|n| n as u32),
+            sample_rate: t
+                .get("samplingRate")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as u32),
+            format: t
+                .get("suffix")
+                .or_else(|| t.get("contentType"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             liked: t.get("starred").is_some(),
+            source: SourceKind::Server,
+            video_url: None,
             id,
         }
     }
@@ -276,6 +287,8 @@ impl SubsonicBackend {
             year: a.get("year").and_then(|v| v.as_i64()).map(|y| y as i32),
             cover_url: self.cover(a.get("coverArt").and_then(|v| v.as_str()).unwrap_or(&id)),
             track_count: a.get("songCount").and_then(|v| v.as_u64()).map(|n| n as u32),
+            source: SourceKind::Server,
+            alt_ids: Vec::new(),
             id,
         }
     }
@@ -733,6 +746,30 @@ impl MediaBackend for SubsonicBackend {
 
     fn report_progress(&self, track_id: &str, _position: u64, _is_paused: bool) -> Result<()> {
         self.scrobble(track_id, false)
+    }
+
+    fn upload_library_file(&self, path: &std::path::Path, relative: &std::path::Path) -> Result<()> {
+        let root = crate::history::History::open()
+            .ok()
+            .and_then(|h| h.get_setting("subsonic_ingest_path"))
+            .map(std::path::PathBuf::from)
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| {
+                dirs::data_dir()
+                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+                    .join("neighbourhood-music")
+                    .join("subsonic-inbox")
+            });
+        let dest = root.join(relative);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::copy(path, &dest)
+            .with_context(|| format!("copy {} → {}", path.display(), dest.display()))?;
+        // Best-effort scan trigger (Navidrome/OpenSubsonic may ignore).
+        let _ = self.get("startScan", "");
+        tracing::info!(path = %dest.display(), "uploaded to Subsonic ingest path");
+        Ok(())
     }
 }
 

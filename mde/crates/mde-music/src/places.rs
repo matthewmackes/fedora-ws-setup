@@ -105,6 +105,7 @@ pub fn list_servers() -> Result<Vec<ServerTarget>> {
             let default_port = match kind {
                 BackendKind::Jellyfin => 8096,
                 BackendKind::Subsonic => 4040,
+                BackendKind::YoutubeMusic => 443,
             };
             out.push(ServerTarget {
                 id: p.id.clone(),

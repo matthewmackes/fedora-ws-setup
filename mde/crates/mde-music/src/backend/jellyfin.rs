@@ -180,10 +180,17 @@ impl JellyfinBackend {
                 .pointer("/MediaSources/0/Bitrate")
                 .and_then(|v| v.as_u64())
                 .map(|n| (n / 1000) as u32),
+            sample_rate: None,
+            format: it
+                .pointer("/MediaSources/0/Container")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             liked: it
                 .pointer("/UserData/IsFavorite")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false),
+            source: SourceKind::Server,
+            video_url: None,
             id,
         }
     }
@@ -210,6 +217,8 @@ impl JellyfinBackend {
                 .get("ChildCount")
                 .and_then(|v| v.as_u64())
                 .map(|n| n as u32),
+            source: SourceKind::Server,
+            alt_ids: Vec::new(),
             id,
         }
     }
@@ -738,6 +747,32 @@ impl MediaBackend for JellyfinBackend {
                 "PlayMethod": "DirectStream",
             }),
         )?;
+        Ok(())
+    }
+
+    fn upload_library_file(&self, path: &std::path::Path, relative: &std::path::Path) -> Result<()> {
+        // Prefer configured ingest directory (Neighbourhood setting), else local staging
+        // under the data dir and ask Jellyfin to refresh.
+        let root = crate::history::History::open()
+            .ok()
+            .and_then(|h| h.get_setting("jellyfin_ingest_path"))
+            .map(std::path::PathBuf::from)
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| {
+                dirs::data_dir()
+                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+                    .join("neighbourhood-music")
+                    .join("jellyfin-inbox")
+            });
+        let dest = root.join(relative);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::copy(path, &dest)
+            .with_context(|| format!("copy {} → {}", path.display(), dest.display()))?;
+        // Trigger library scan so the new file appears.
+        let _ = self.post_empty("/Library/Refresh");
+        tracing::info!(path = %dest.display(), "uploaded to Jellyfin ingest path");
         Ok(())
     }
 

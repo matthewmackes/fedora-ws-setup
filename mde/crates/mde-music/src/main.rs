@@ -1,3 +1,4 @@
+mod acquire;
 mod artwork;
 mod backend;
 mod cache;
@@ -11,8 +12,11 @@ mod player;
 mod podcasts;
 mod radio;
 mod sync;
+mod taste;
 mod ui;
+mod unify;
 mod urlfix;
+mod ytm;
 
 use anyhow::Result;
 

@@ -1,8 +1,10 @@
 pub mod jellyfin;
 pub mod subsonic;
+pub mod youtube_music;
 
 use crate::model::*;
 use anyhow::Result;
+use std::path::Path;
 use std::sync::Arc;
 
 pub trait MediaBackend: Send + Sync {
@@ -45,6 +47,11 @@ pub trait MediaBackend: Send + Sync {
     fn set_favorite(&self, track_id: &str, liked: bool) -> Result<()>;
     fn report_progress(&self, track_id: &str, position_ticks_or_secs: u64, is_paused: bool) -> Result<()>;
 
+    /// Upload a local audio file into the server library (API or watched path).
+    fn upload_library_file(&self, _path: &Path, _relative: &Path) -> Result<()> {
+        anyhow::bail!("upload not supported by this server")
+    }
+
     fn supports_remote_control(&self) -> bool {
         false
     }
@@ -57,7 +64,13 @@ pub fn connect(server: &ServerTarget) -> Result<Arc<dyn MediaBackend>> {
     match server.kind {
         BackendKind::Jellyfin => Ok(Arc::new(jellyfin::JellyfinBackend::connect(server)?)),
         BackendKind::Subsonic => Ok(Arc::new(subsonic::SubsonicBackend::connect(server)?)),
+        BackendKind::YoutubeMusic => youtube_music::as_arc(),
     }
+}
+
+/// Synthetic always-on YTM source for the unified catalog.
+pub fn youtube_music_source() -> Result<Arc<dyn MediaBackend>> {
+    youtube_music::as_arc()
 }
 
 #[cfg(test)]

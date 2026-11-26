@@ -16,9 +16,9 @@ members = [
     "mde-anvil",
     "mde-fidelity",
     "mde-files",
+    "mde-setup-ui",
     "smithay-drm-extras",
-    # mde-music remains GTK4 for now; build with: cargo build -p mde-music
-    # "mde-music",
+    "mde-music",
 ]
 default-members = [
     "mde-config",
@@ -36,6 +36,7 @@ default-members = [
     "mde-anvil",
     "mde-fidelity",
     "mde-files",
+    "mde-setup-ui",
 ]
 
 [workspace.package]
