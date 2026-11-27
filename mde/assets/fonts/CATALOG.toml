@@ -1,0 +1,214 @@
+# MDE font catalog — Personalization → Fonts
+# `family` is the fontconfig / iced Font::with_name value.
+# `dir` is relative to this assets/fonts tree (and /usr/share/fonts/mde after install).
+# `preview` is the Regular face used for Settings list previews.
+
+[[ui]]
+family = "Inter"
+dir = "Inter"
+preview = "Inter-Regular.ttf"
+default = true
+
+[[ui]]
+family = "Roboto"
+dir = "Roboto"
+preview = "Roboto-Regular.ttf"
+
+[[ui]]
+family = "Open Sans"
+dir = "OpenSans"
+preview = "OpenSans-Regular.ttf"
+
+[[ui]]
+family = "Lato"
+dir = "Lato"
+preview = "Lato-Regular.ttf"
+
+[[ui]]
+family = "Montserrat"
+dir = "Montserrat"
+preview = "Montserrat-Regular.ttf"
+
+[[ui]]
+family = "Noto Sans"
+dir = "NotoSans"
+preview = "NotoSans-Regular.ttf"
+
+[[ui]]
+family = "Source Sans 3"
+dir = "SourceSans3"
+preview = "SourceSans3-Regular.ttf"
+
+[[ui]]
+family = "Poppins"
+dir = "Poppins"
+preview = "Poppins-Regular.ttf"
+
+[[ui]]
+family = "Raleway"
+dir = "Raleway"
+preview = "Raleway-Regular.ttf"
+
+[[ui]]
+family = "Nunito"
+dir = "Nunito"
+preview = "Nunito-Regular.ttf"
+
+[[ui]]
+family = "Ubuntu"
+dir = "Ubuntu"
+preview = "Ubuntu-Regular.ttf"
+
+[[ui]]
+family = "Work Sans"
+dir = "WorkSans"
+preview = "WorkSans-Regular.ttf"
+
+[[ui]]
+family = "DM Sans"
+dir = "DMSans"
+preview = "DMSans-Regular.ttf"
+
+[[ui]]
+family = "Figtree"
+dir = "Figtree"
+preview = "Figtree-Regular.ttf"
+
+[[ui]]
+family = "Plus Jakarta Sans"
+dir = "PlusJakartaSans"
+preview = "PlusJakartaSans-Regular.ttf"
+
+[[ui]]
+family = "Outfit"
+dir = "Outfit"
+preview = "Outfit-Regular.ttf"
+
+[[ui]]
+family = "Manrope"
+dir = "Manrope"
+preview = "Manrope-Regular.ttf"
+
+[[ui]]
+family = "Rubik"
+dir = "Rubik"
+preview = "Rubik-Regular.ttf"
+
+[[ui]]
+family = "Mulish"
+dir = "Mulish"
+preview = "Mulish-Regular.ttf"
+
+[[ui]]
+family = "Karla"
+dir = "Karla"
+preview = "Karla-Regular.ttf"
+
+[[ui]]
+family = "Selawik"
+dir = "Selawik"
+preview = "selawk.ttf"
+
+[[mono]]
+family = "Cascadia Mono"
+dir = "CascadiaMono"
+preview = "CascadiaMono-Regular.ttf"
+default = true
+
+[[mono]]
+family = "Roboto Mono"
+dir = "RobotoMono"
+preview = "RobotoMono-Regular.ttf"
+
+[[mono]]
+family = "Source Code Pro"
+dir = "SourceCodePro"
+preview = "SourceCodePro-Regular.ttf"
+
+[[mono]]
+family = "Fira Code"
+dir = "FiraCode"
+preview = "FiraCode-Regular.ttf"
+
+[[mono]]
+family = "IBM Plex Mono"
+dir = "IBMPlexMonoGF"
+preview = "IBMPlexMono-Regular.ttf"
+
+[[mono]]
+family = "Noto Sans Mono"
+dir = "NotoSansMono"
+preview = "NotoSansMono-Regular.ttf"
+
+[[mono]]
+family = "Space Mono"
+dir = "SpaceMono"
+preview = "SpaceMono-Regular.ttf"
+
+[[mono]]
+family = "Cousine"
+dir = "Cousine"
+preview = "Cousine-Regular.ttf"
+
+[[mono]]
+family = "Ubuntu Mono"
+dir = "UbuntuMono"
+preview = "UbuntuMono-Regular.ttf"
+
+[[mono]]
+family = "Share Tech Mono"
+dir = "ShareTechMono"
+preview = "ShareTechMono-Regular.ttf"
+
+# Curated Nerd Font subset (not the full Nerd catalog).
+# Install more into ~/.local/share/fonts to use additional Nerd families.
+
+[[nerd]]
+family = "Hack Nerd Font"
+dir = "Hack"
+preview = "HackNerdFont-Regular.ttf"
+
+[[nerd]]
+family = "Inconsolata Nerd Font"
+dir = "Inconsolata"
+preview = "InconsolataNerdFont-Regular.ttf"
+
+[[nerd]]
+family = "Hurmit Nerd Font"
+dir = "Hermit"
+preview = "HurmitNerdFont-Regular.otf"
+
+[[nerd]]
+family = "BlexMono Nerd Font"
+dir = "IBMPlexMono"
+preview = "BlexMonoNerdFont-Regular.ttf"
+
+[[nerd]]
+family = "FiraCode Nerd Font"
+dir = "FiraCodeNF"
+preview = "FiraCodeNerdFont-Regular.ttf"
+
+[[nerd]]
+family = "JetBrainsMono Nerd Font"
+dir = "JetBrainsMonoNF"
+preview = "JetBrainsMonoNerdFont-Regular.ttf"
+
+[[nerd]]
+family = "CaskaydiaCove Nerd Font"
+dir = "CascadiaCodeNF"
+preview = "CaskaydiaCoveNerdFont-Regular.ttf"
+
+[[nerd]]
+family = "MesloLGS Nerd Font"
+dir = "MesloNF"
+preview = "MesloLGSNerdFont-Regular.ttf"
+
+[[nerd]]
+family = "SauceCodePro Nerd Font"
+dir = "SauceCodeProNF"
+preview = "SauceCodeProNerdFont-Regular.ttf"
+
+[[nerd]]
+family = "RobotoMono Nerd Font"
+dir = "RobotoMonoNF"
+preview = "RobotoMonoNerdFont-Regular.ttf"
