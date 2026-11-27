@@ -17,7 +17,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+pub mod library;
 pub mod people;
+pub mod web;
 pub use people::Guest;
 
 pub const PAGE: usize = 20;
@@ -63,6 +65,14 @@ pub struct Episode {
     pub duration_secs: Option<u64>,
     #[serde(default)]
     pub guests: Vec<Guest>,
+    /// Podcasting 2.0 `<podcast:chapters>` JSON URL, when the feed has one.
+    #[serde(default)]
+    pub chapters_url: Option<String>,
+    /// Podcasting 2.0 `<podcast:transcript>` URL and MIME type, when present.
+    #[serde(default)]
+    pub transcript_url: Option<String>,
+    #[serde(default)]
+    pub transcript_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,6 +147,7 @@ impl Episode {
             published: episode.published.clone(),
             duration_secs: episode.duration_secs,
             guests: Vec::new(),
+            ..Default::default()
         })
     }
 
@@ -259,6 +270,7 @@ pub fn episodes_for_feed(show: &Show) -> Result<Vec<Episode>> {
             .unwrap_or_default();
         let title = item.title().unwrap_or("Episode").trim().to_string();
         let guests = guests_for(item, &title, &description, &show.author);
+        let transcript = people::transcript_link(item);
         episodes.push(Episode {
             id,
             show_id: show.id.clone(),
@@ -269,6 +281,9 @@ pub fn episodes_for_feed(show: &Show) -> Result<Vec<Episode>> {
             published: item.pub_date().map(|s| s.to_string()),
             duration_secs: duration,
             guests,
+            chapters_url: people::chapters_url(item),
+            transcript_url: transcript.as_ref().map(|t| t.0.clone()),
+            transcript_type: transcript.map(|t| t.1),
         });
         if episodes.len() >= FEED_EPISODE_CAP * 2 {
             // RSS order is usually newest-first; stop early on huge feeds.
@@ -306,6 +321,13 @@ pub fn merge_episode_lists(server: Vec<Episode>, feed: Vec<Episode>) -> Vec<Epis
             if kept.guests.is_empty() {
                 kept.guests = ep.guests;
             }
+            if kept.chapters_url.is_none() {
+                kept.chapters_url = ep.chapters_url;
+            }
+            if kept.transcript_url.is_none() {
+                kept.transcript_url = ep.transcript_url;
+                kept.transcript_type = ep.transcript_type;
+            }
             continue;
         }
         seen.insert(key, out.len());
@@ -320,7 +342,7 @@ pub fn sort_newest(episodes: &mut [Episode]) {
     episodes.sort_by(|a, b| publish_key(b.published.as_deref()).cmp(&publish_key(a.published.as_deref())));
 }
 
-fn publish_key(value: Option<&str>) -> i64 {
+pub(crate) fn publish_key(value: Option<&str>) -> i64 {
     let Some(value) = value.map(str::trim).filter(|s| !s.is_empty()) else {
         return 0;
     };
@@ -410,6 +432,11 @@ pub fn retry_saved_subscriptions(backend: Arc<dyn MediaBackend>) {
     });
 }
 
+/// Start `track_id` at an exact position (a chapter or transcript line).
+pub fn resume_at(track_id: &str, secs: u64) {
+    *RESUME.lock() = Some((track_id.to_string(), secs));
+}
+
 pub fn arm_resume(track_id: &str) {
     let Some(pos) = progress_for(track_id) else {
         return;
@@ -455,11 +482,11 @@ pub fn note_progress(track_id: &str, position: u64) {
     let _ = write_json(&progress_path(), &map);
 }
 
-fn progress_for(track_id: &str) -> Option<u64> {
+pub fn progress_for(track_id: &str) -> Option<u64> {
     load_progress_map().get(track_id).copied()
 }
 
-fn load_progress_map() -> std::collections::BTreeMap<String, u64> {
+pub fn load_progress_map() -> std::collections::BTreeMap<String, u64> {
     let Ok(text) = fs::read_to_string(progress_path()) else {
         return std::collections::BTreeMap::new();
     };
@@ -512,7 +539,7 @@ fn apple_lookup(ids: &[String]) -> Result<Vec<Show>> {
     Ok(shows)
 }
 
-fn apple_search(query: &str) -> Result<Vec<Show>> {
+pub(crate) fn apple_search(query: &str) -> Result<Vec<Show>> {
     let url = format!(
         "https://itunes.apple.com/search?term={}&media=podcast&entity=podcast&limit=40",
         urlencoding::encode(query)
@@ -634,7 +661,7 @@ fn merge_shows(primary: Vec<Show>, extra: Vec<Show>) -> Vec<Show> {
     out
 }
 
-fn feed_key(url: &str) -> String {
+pub(crate) fn feed_key(url: &str) -> String {
     url.trim().trim_end_matches('/').to_ascii_lowercase()
 }
 
@@ -692,7 +719,7 @@ fn index_get(url: &str, key: &str, secret: &str) -> Result<Value> {
     Ok(value)
 }
 
-fn http() -> ureq::Agent {
+pub(crate) fn http() -> ureq::Agent {
     ureq::AgentBuilder::new()
         .timeout(Duration::from_secs(12))
         .timeout_connect(Duration::from_secs(5))
@@ -700,7 +727,7 @@ fn http() -> ureq::Agent {
         .build()
 }
 
-fn http_json(url: &str) -> Result<Value> {
+pub(crate) fn http_json(url: &str) -> Result<Value> {
     Ok(http()
         .get(url)
         .set("Accept", "application/json")
@@ -779,7 +806,7 @@ fn nonempty(value: String) -> Option<String> {
     }
 }
 
-fn stable_id(value: &str) -> String {
+pub(crate) fn stable_id(value: &str) -> String {
     let digest = md5::Md5::digest(value.as_bytes());
     hex::encode(digest)
 }
@@ -802,7 +829,7 @@ pub fn parse_duration(value: &str) -> Option<u64> {
     })
 }
 
-fn format_duration(secs: u64) -> String {
+pub fn format_duration(secs: u64) -> String {
     if secs >= 3600 {
         format!("{} h {} min", secs / 3600, (secs % 3600) / 60)
     } else if secs >= 60 {
@@ -812,7 +839,7 @@ fn format_duration(secs: u64) -> String {
     }
 }
 
-fn short_date(value: &str) -> Option<String> {
+pub fn short_date(value: &str) -> Option<String> {
     let value = value.trim();
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(value) {
         return Some(dt.format("%Y-%m-%d").to_string());
@@ -840,7 +867,7 @@ pub fn strip_html(value: &str) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn clip(text: &str, max: usize) -> String {
+pub fn clip(text: &str, max: usize) -> String {
     let text = text.trim();
     if text.chars().count() <= max {
         text.to_string()
@@ -851,7 +878,7 @@ fn clip(text: &str, max: usize) -> String {
     }
 }
 
-fn config_dir() -> PathBuf {
+pub(crate) fn config_dir() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("neighbourhood-music")
@@ -898,7 +925,7 @@ fn save_pending(pending: &[PendingSub]) -> Result<()> {
     write_json(&pending_path(), &PendingFile { pending: pending.to_vec() })
 }
 
-fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+pub(crate) fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }

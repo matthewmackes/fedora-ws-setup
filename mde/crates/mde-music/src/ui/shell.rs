@@ -495,7 +495,10 @@ pub(crate) fn play_track(state: &AppState, mut track: Track) {
     }
 
     // Stream over HTTP directly — do not pre-download from the media server.
-    let play_uri = if radio || podcast {
+    let play_uri = if podcast && track.stream_url.starts_with("file://") {
+        // A downloaded episode plays from disk.
+        track.stream_url.clone()
+    } else if radio || podcast {
         crate::urlfix::normalize_http_url(&track.stream_url)
     } else {
         let mode = state.player.transcode();

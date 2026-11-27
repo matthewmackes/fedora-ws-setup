@@ -84,6 +84,42 @@ pub fn guests_from_extensions(item: &rss::Item) -> Vec<Guest> {
     out
 }
 
+/// `<podcast:chapters url="…">` of a feed item.
+pub fn chapters_url(item: &rss::Item) -> Option<String> {
+    for ns in item.extensions().values() {
+        for ext in ns.get("chapters").into_iter().flatten() {
+            if let Some(url) = ext.attrs().get("url").map(|u| u.trim()).filter(|u| u.contains("://")) {
+                return Some(url.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Best `<podcast:transcript>` of a feed item as `(url, mime type)`.
+pub fn transcript_link(item: &rss::Item) -> Option<(String, String)> {
+    let mut best: Option<(u8, String, String)> = None;
+    for ns in item.extensions().values() {
+        for ext in ns.get("transcript").into_iter().flatten() {
+            let Some(url) = ext.attrs().get("url").map(|u| u.trim()).filter(|u| u.contains("://")) else {
+                continue;
+            };
+            let kind = ext.attrs().get("type").map(|t| t.trim().to_ascii_lowercase()).unwrap_or_default();
+            let rank = match kind.as_str() {
+                "application/json" => 4,
+                "text/vtt" => 3,
+                "application/x-subrip" | "application/srt" => 2,
+                "text/html" => 1,
+                _ => 0,
+            };
+            if best.as_ref().map_or(true, |b| rank > b.0) {
+                best = Some((rank, url.to_string(), kind));
+            }
+        }
+    }
+    best.map(|(_, url, kind)| (url, kind))
+}
+
 /// Guests named in an episode title/description. `skip` lists names to ignore
 /// (the show's own host/author).
 pub fn guests_from_text(title: &str, description: &str, skip: &str) -> Vec<Guest> {

@@ -261,6 +261,24 @@ impl Player {
         Ok(())
     }
 
+    /// Change playback speed (1.0 = normal) from the current position.
+    pub fn set_rate(&self, rate: f64) -> Result<()> {
+        let g = self.inner.lock();
+        let pos = g
+            .pipeline
+            .query_position::<gst::ClockTime>()
+            .unwrap_or(gst::ClockTime::ZERO);
+        g.pipeline.seek(
+            rate.clamp(0.25, 4.0),
+            gst::SeekFlags::FLUSH | gst::SeekFlags::ACCURATE,
+            gst::SeekType::Set,
+            pos,
+            gst::SeekType::None,
+            gst::ClockTime::ZERO,
+        )?;
+        Ok(())
+    }
+
     pub fn position_secs(&self) -> u64 {
         let g = self.inner.lock();
         g.pipeline
