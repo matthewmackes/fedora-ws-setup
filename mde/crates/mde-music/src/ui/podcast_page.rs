@@ -70,6 +70,8 @@ pub(crate) struct PodcastPage {
     more: Button,
     back: Button,
     header: GtkBox,
+    /// Chrome hidden while an episode list is open, so episodes get the height.
+    chrome: Vec<gtk4::Widget>,
     favorites: Rc<RefCell<Vec<Show>>>,
     server: Rc<RefCell<Vec<Show>>>,
     shown: Rc<RefCell<Vec<Show>>>,
@@ -93,6 +95,12 @@ impl PodcastPage {
         *self.server.borrow_mut() = shows.iter().map(Show::from_server).collect();
         if matches!(*self.mode.borrow(), Browse::Server) && self.episodes.borrow().is_none() {
             self.start_shows(false);
+        }
+    }
+
+    fn set_chrome(&self, visible: bool) {
+        for w in &self.chrome {
+            w.set_visible(visible);
         }
     }
 
@@ -229,6 +237,7 @@ impl PodcastPage {
         *self.episodes.borrow_mut() = None;
         self.back.set_visible(false);
         self.header.set_visible(false);
+        self.set_chrome(true);
         self.more.set_visible(false);
         let gen = self.bump();
         let mode = self.mode.borrow().clone();
@@ -272,6 +281,7 @@ impl PodcastPage {
     pub(crate) fn open_show(&self, show: Show) {
         self.back.set_visible(true);
         self.header.set_visible(true);
+        self.set_chrome(false);
         *self.episodes.borrow_mut() = None;
         self.fill_header(&show);
         self.clear_list();
@@ -300,7 +310,7 @@ impl PodcastPage {
         while let Some(child) = self.header.first_child() {
             self.header.remove(&child);
         }
-        self.header.add_css_class("nm-hero-stage");
+        self.header.add_css_class("nm-show-header");
         let art = gtk4::Image::new();
         art.add_css_class("nm-hero-art");
         art.set_pixel_size(168);
@@ -404,6 +414,7 @@ impl PodcastPage {
         self.fill_header(&show);
         self.back.set_visible(true);
         self.header.set_visible(true);
+        self.set_chrome(false);
         self.clear_list();
         self.add_episode_rows(&show, &episodes[..shown]);
         self.more.set_label("More episodes");
@@ -1117,17 +1128,27 @@ pub(crate) fn build_podcast_page(state: Rc<AppState>) -> PodcastPage {
     list.set_activate_on_single_click(true);
     list.add_css_class("nm-library-list");
     list.set_widget_name("nm-podcast-list");
-    let list_scroll = ScrolledWindow::builder()
-        .child(&list)
-        .vexpand(true)
-        .hexpand(true)
-        .build();
-
     let more = Button::with_label("More episodes");
     more.add_css_class("nm-chip");
     more.set_halign(Align::Start);
     more.set_visible(false);
     more.set_widget_name("nm-podcast-more");
+
+    // One scroll area holds header, status, episodes and "More", so a tall show
+    // header can never squeeze the episode list into a clipped strip.
+    let body = GtkBox::new(Orientation::Vertical, 8);
+    body.append(&header);
+    body.append(&status);
+    body.append(&list);
+    body.append(&more);
+    let list_scroll = ScrolledWindow::builder()
+        .child(&body)
+        .vexpand(true)
+        .hexpand(true)
+        .build();
+    list_scroll.set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::Automatic);
+    list_scroll.set_propagate_natural_height(false);
+    list_scroll.set_min_content_height(120);
 
     root.append(&heading);
     root.append(&blurb);
@@ -1135,10 +1156,7 @@ pub(crate) fn build_podcast_page(state: Rc<AppState>) -> PodcastPage {
     root.append(&search_row);
     root.append(&chips_scroll);
     root.append(&back);
-    root.append(&header);
-    root.append(&status);
     root.append(&list_scroll);
-    root.append(&more);
 
     let (bio_jobs, bio_rx) = mpsc::channel::<String>();
     let bio_done: Arc<parking_lot::Mutex<Vec<BioResult>>> =
@@ -1162,6 +1180,12 @@ pub(crate) fn build_podcast_page(state: Rc<AppState>) -> PodcastPage {
         more: more.clone(),
         back: back.clone(),
         header: header.clone(),
+        chrome: vec![
+            heading.clone().upcast(),
+            search_row.clone().upcast(),
+            blurb.clone().upcast(),
+            chips_scroll.clone().upcast(),
+        ],
         favorites: Rc::new(RefCell::new(podcasts::load_favorites())),
         server: Rc::new(RefCell::new(Vec::new())),
         shown: Rc::new(RefCell::new(Vec::new())),

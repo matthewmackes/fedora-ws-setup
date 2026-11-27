@@ -2045,16 +2045,6 @@ fn show_immersive_album(state: &Rc<AppState>, ui: &LibraryUi, album: Album, trac
     clear_box(&ui.body);
     ui.body.set_widget_name("library-album-immersive");
 
-    let overlay = gtk4::Overlay::new();
-    overlay.add_css_class("nm-album-bleed");
-    overlay.set_hexpand(true);
-    overlay.set_vexpand(true);
-    let backdrop = gtk4::Picture::new();
-    backdrop.set_content_fit(gtk4::ContentFit::Cover);
-    backdrop.set_can_shrink(true);
-    backdrop.set_hexpand(true);
-    backdrop.set_vexpand(true);
-    backdrop.add_css_class("nm-album-bleed-art");
     // Art comes from the global full-bleed host (HD cover + artist fan art).
     super::ambient::set_context(
         super::bleed::Mode::Sharp,
@@ -2064,16 +2054,31 @@ fn show_immersive_album(state: &Rc<AppState>, ui: &LibraryUi, album: Album, trac
             cover_url: album.cover_url.clone(),
         },
     );
-    overlay.set_child(Some(&backdrop));
+    // One flowing page (the library scroll handles overflow): compact header card
+    // with cover + title + actions, then every track. No fixed-height overlay, so a
+    // long album can never be clipped.
+    let page = GtkBox::new(Orientation::Vertical, 10);
+    page.set_hexpand(true);
+    page.set_margin_top(8);
+    page.set_margin_start(16);
+    page.set_margin_end(16);
+    page.set_margin_bottom(12);
 
-    let hero = GtkBox::new(Orientation::Vertical, 12);
-    hero.add_css_class("nm-album-hero");
-    hero.set_margin_top(148);
-    hero.set_margin_start(16);
-    hero.set_margin_end(16);
-    hero.set_margin_bottom(12);
-    hero.set_valign(Align::Fill);
+    let hero = GtkBox::new(Orientation::Horizontal, 20);
+    hero.add_css_class("nm-show-header");
     hero.set_hexpand(true);
+    let cover = gtk4::Image::new();
+    cover.add_css_class("nm-hero-art");
+    cover.set_pixel_size(168);
+    cover.set_size_request(168, 168);
+    cover.set_valign(Align::Start);
+    cover.set_icon_name(Some("multimedia-player-symbolic"));
+    bind_cover(&cover, album.cover_url.as_deref());
+    hero.append(&cover);
+    let text = GtkBox::new(Orientation::Vertical, 8);
+    text.set_hexpand(true);
+    text.set_valign(Align::Center);
+    hero.append(&text);
     let sub = Label::new(Some(&format!(
         "{}{}",
         album.name,
@@ -2082,13 +2087,14 @@ fn show_immersive_album(state: &Rc<AppState>, ui: &LibraryUi, album: Album, trac
             .map(|y| format!(" · {} · {y}", album.artist))
             .unwrap_or_else(|| format!(" · {}", album.artist))
     )));
-    sub.add_css_class("nm-hero-title");
+    sub.add_css_class("nm-ep-title");
     sub.set_halign(Align::Start);
     sub.set_wrap(true);
-    hero.append(&sub);
+    sub.set_xalign(0.0);
+    text.append(&sub);
 
     let actions = GtkBox::new(Orientation::Horizontal, 8);
-    actions.set_halign(Align::Center);
+    actions.set_halign(Align::Start);
     let play_all = Button::with_label("Play");
     play_all.add_css_class("nm-transport");
     let shuffle = Button::with_label("Shuffle");
@@ -2136,15 +2142,14 @@ fn show_immersive_album(state: &Rc<AppState>, ui: &LibraryUi, album: Album, trac
     actions.append(&play_all);
     actions.append(&shuffle);
     actions.append(&overview);
-    hero.append(&actions);
+    text.append(&actions);
+    page.append(&hero);
 
     let frost = GtkBox::new(Orientation::Vertical, 4);
     frost.add_css_class("nm-frost-tracks");
-    frost.set_vexpand(true);
     show_track_table(state, &frost, &tracks);
-    hero.append(&frost);
-    overlay.add_overlay(&hero);
-    ui.body.append(&overlay);
+    page.append(&frost);
+    ui.body.append(&page);
 }
 
 fn show_liked_songs(state: &Rc<AppState>, ui: &LibraryUi) {
