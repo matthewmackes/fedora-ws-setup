@@ -66,6 +66,39 @@ async fn main() -> Result<()> {
     tracing::info!("Network Neighbourhood daemon starting on system bus");
     let _conn = dbus::serve_system().await.context("claim system bus name")?;
 
+    // Reachability probe: feeds the Offline badge, last-seen and back-online notices.
+    tokio::spawn(async {
+        loop {
+            let _ = tokio::task::spawn_blocking(|| {
+                let Ok(cfg) = Config::load() else { return };
+                let mut seen = mde_network_neighbourhood::status::load_seen();
+                let now = mde_network_neighbourhood::status::now_secs();
+                for place in &cfg.places {
+                    let up = mount::place_reachable(place);
+                    let (next, t) = mde_network_neighbourhood::status::observe(
+                        seen.get(&place.id),
+                        up,
+                        now,
+                    );
+                    match t {
+                        mde_network_neighbourhood::status::Transition::WentOffline => {
+                            tracing::warn!(place = %place.name, host = %place.host, "place went offline")
+                        }
+                        mde_network_neighbourhood::status::Transition::CameBack => {
+                            tracing::info!(place = %place.name, host = %place.host, "place is back online")
+                        }
+                        _ => {}
+                    }
+                    seen.insert(place.id.clone(), next);
+                }
+                seen.retain(|id, _| cfg.places.iter().any(|p| &p.id == id));
+                mde_network_neighbourhood::status::save_seen(&seen);
+            })
+            .await;
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        }
+    });
+
     // Background LAN discovery — keeps /var/lib/network-neighbourhood/discovered.json fresh.
     tokio::spawn(async {
         // Small delay so D-Bus is fully claimed before the first heavy scan.

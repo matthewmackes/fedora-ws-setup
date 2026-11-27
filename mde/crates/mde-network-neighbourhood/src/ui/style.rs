@@ -90,6 +90,9 @@ window.nn-window {{
   margin: 6px 12px;
   min-height: {row_min}px;
 }}
+.nn-card.nn-offline {{
+  opacity: 0.6;
+}}
 .nn-card:hover {{
   border-color: {accent};
 }}

@@ -290,7 +290,7 @@ fn run_add_dialog(window: &ApplicationWindow, initial: Option<Place>, refresh: R
         .iter()
         .map(|p| (p.as_str(), p.label()))
         .collect();
-    let (policy, policy_ids) = dropdown_ids(&policy_pairs, MountPolicy::MountNow.as_str());
+    let (policy, policy_ids) = dropdown_ids(&policy_pairs, MountPolicy::Automount.as_str());
 
     let letters: Vec<String> = std::iter::once("(none)".to_string())
         .chain(('A'..='Z').map(|c| format!("{c}:")))
@@ -606,30 +606,16 @@ fn run_add_dialog(window: &ApplicationWindow, initial: Option<Place>, refresh: R
             let password = pass.text().to_string();
             match dbus::upsert_place_sync(&place, &password) {
                 Ok(id) => {
-                    let mp = place.mount_point();
                     let policy = place.mount_policy;
                     dlg.close();
                     refresh();
+                    // Connect through the same Connecting dialog so every step and
+                    // failure is visible (and the user can Retry / Edit / auto-fix).
                     if matches!(
                         policy,
                         MountPolicy::MountNow | MountPolicy::Automount
                     ) {
-                        std::thread::spawn(move || {
-                            let _ = dbus::call_sync("BeginAdminSession", "");
-                            match dbus::mount_place_sync(&id) {
-                                Ok(_) => {
-                                    if policy == MountPolicy::MountNow {
-                                        let _ = std::process::Command::new("xdg-open")
-                                            .arg(&mp)
-                                            .stdin(std::process::Stdio::null())
-                                            .stdout(std::process::Stdio::null())
-                                            .stderr(std::process::Stdio::null())
-                                            .spawn();
-                                    }
-                                }
-                                Err(e) => eprintln!("mount: {e}"),
-                            }
-                        });
+                        super::window::connect_after_save(&id);
                     }
                 }
                 Err(e) => {

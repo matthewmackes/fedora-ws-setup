@@ -108,6 +108,11 @@ fn build_ui(app: &Application) {
     let open_btn = Button::with_label("Open in Files");
     let web_btn = Button::with_label("Open web app");
     web_btn.set_visible(false);
+    let history_btn = Button::with_label("Activity");
+    history_btn.connect_clicked({
+        let window = window.clone();
+        move |_| show_history(&window)
+    });
     for b in [
         &add_btn,
         &discover_btn,
@@ -115,6 +120,7 @@ fn build_ui(app: &Application) {
         &open_btn,
         &web_btn,
         &disconnect_btn,
+        &history_btn,
     ] {
         cmd.append(b);
     }
@@ -641,6 +647,95 @@ fn build_ui(app: &Application) {
         });
     }
 
+    // Let the Add wizard start a connect once a place is saved.
+    {
+        let window = window.clone();
+        let state = state.clone();
+        let widgets = connect_widgets.clone();
+        let refresh_holder = refresh_holder.clone();
+        CONNECT_HOOK.with(|h| {
+            *h.borrow_mut() = Some(Rc::new(move |id: String| {
+                let refresh = refresh_holder
+                    .borrow()
+                    .clone()
+                    .unwrap_or_else(|| Rc::new(|| {}));
+                let (window, state, widgets) = (window.clone(), state.clone(), widgets.clone());
+                // The saved place is not in `state.places` until the list reloads.
+                refresh();
+                let tries = Cell::new(0u32);
+                glib::timeout_add_local(Duration::from_millis(250), move || {
+                    tries.set(tries.get() + 1);
+                    let known = state.borrow().places.iter().any(|p| p.id == id);
+                    if known {
+                        open_place(&window, &state, &id, refresh.clone(), widgets.clone());
+                        glib::ControlFlow::Break
+                    } else if tries.get() >= 24 {
+                        glib::ControlFlow::Break
+                    } else {
+                        glib::ControlFlow::Continue
+                    }
+                });
+            }));
+        });
+    }
+
+    // Poll the daemon's reachability probe; notify when a place comes back online.
+    {
+        let state = state.clone();
+        let app = app.clone();
+        let apply_places = apply_places.clone();
+        let busy = Rc::new(Cell::new(false));
+        glib::timeout_add_local(Duration::from_secs(15), move || {
+            if busy.get() {
+                return glib::ControlFlow::Continue;
+            }
+            busy.set(true);
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = tx.send(dbus::get_reachability_sync());
+            });
+            let state = state.clone();
+            let app = app.clone();
+            let apply_places = apply_places.clone();
+            let busy = busy.clone();
+            glib::timeout_add_local(Duration::from_millis(150), move || match rx.try_recv() {
+                Ok(res) => {
+                    busy.set(false);
+                    if let Ok(new) = res {
+                        let places = state.borrow().places.clone();
+                        let mut changed = false;
+                        REACH.with(|r| {
+                            let mut r = r.borrow_mut();
+                            for p in &places {
+                                let was = r.get(&p.id).map(|s| s.reachable);
+                                let now = new.get(&p.id).map(|s| s.reachable);
+                                if was != now {
+                                    changed = true;
+                                }
+                                if was == Some(false) && now == Some(true) {
+                                    let n = gio::Notification::new(&format!("{} is back online", p.name));
+                                    n.set_body(Some("You can connect to it again."));
+                                    app.send_notification(Some(&format!("nn-back-{}", p.id)), &n);
+                                }
+                            }
+                            *r = new;
+                        });
+                        if changed {
+                            apply_places(places);
+                        }
+                    }
+                    glib::ControlFlow::Break
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                Err(_) => {
+                    busy.set(false);
+                    glib::ControlFlow::Break
+                }
+            });
+            glib::ControlFlow::Continue
+        });
+    }
+
     window.present();
 }
 
@@ -680,6 +775,120 @@ fn ensure_admin(state: &Rc<RefCell<AppState>>) {
             state.borrow_mut().admin_until = None;
             glib::ControlFlow::Break
         }
+    });
+}
+
+thread_local! {
+    /// Lets other modules (the Add wizard) start a connect with the full dialog.
+    static CONNECT_HOOK: RefCell<Option<Rc<dyn Fn(String)>>> = RefCell::new(None);
+}
+
+/// Start connecting a just-saved place, showing the Connecting dialog.
+pub(super) fn connect_after_save(id: &str) {
+    let hook = CONNECT_HOOK.with(|h| h.borrow().clone());
+    if let Some(f) = hook {
+        f(id.to_string());
+    }
+}
+
+thread_local! {
+    /// Latest daemon reachability per place id (drives the Offline badge).
+    static REACH: RefCell<HashMap<String, crate::status::Seen>> = RefCell::new(HashMap::new());
+}
+
+/// Show/hide hint for a place: Some(text) when the host is known to be offline.
+fn offline_text(place_id: &str) -> Option<String> {
+    REACH.with(|r| {
+        let r = r.borrow();
+        let seen = r.get(place_id)?;
+        if seen.reachable {
+            return None;
+        }
+        Some(match seen.last_seen {
+            Some(ts) => format!("Offline · last seen {}", crate::status::ago(ts, crate::status::now_secs())),
+            None => "Offline · never seen".to_string(),
+        })
+    })
+}
+
+/// Link each mounted place into ~/Network for easy finding.
+fn link_into_home(place: &Place) {
+    let Some(home) = dirs::home_dir() else { return };
+    let dir = home.join("Network");
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let link = dir.join(place.name.replace('/', "_"));
+    let _ = std::fs::remove_file(&link);
+    let _ = std::os::unix::fs::symlink(place.mount_point(), &link);
+}
+
+/// Window listing recent connection attempts across all places.
+fn show_history(window: &ApplicationWindow) {
+    let win = gtk4::Window::builder()
+        .transient_for(window)
+        .modal(false)
+        .title("Connection activity")
+        .default_width(560)
+        .default_height(480)
+        .build();
+    let list = GtkBox::new(Orientation::Vertical, 6);
+    list.set_margin_top(12);
+    list.set_margin_bottom(12);
+    list.set_margin_start(12);
+    list.set_margin_end(12);
+    let scroll = gtk4::ScrolledWindow::builder().child(&list).build();
+    win.set_child(Some(&scroll));
+    list.append(&Label::new(Some("Loading…")));
+    win.present();
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(dbus::get_history_sync(100, None).map_err(|e| e.to_string()));
+    });
+    glib::timeout_add_local(Duration::from_millis(150), move || match rx.try_recv() {
+        Ok(res) => {
+            while let Some(c) = list.first_child() {
+                list.remove(&c);
+            }
+            match res {
+                Err(e) => list.append(&Label::new(Some(&format!("Couldn't load history: {e}")))),
+                Ok(v) if v.is_empty() => {
+                    list.append(&Label::new(Some("No connection attempts yet.")))
+                }
+                Ok(v) => {
+                    let now = crate::status::now_secs();
+                    for e in v {
+                        let ex = gtk4::Expander::builder()
+                            .label(format!(
+                                "{} {} — {} · {}",
+                                if e.ok { "✓" } else { "✗" },
+                                e.name,
+                                if e.ok { e.phrase.clone() } else { e.cause.clone() },
+                                crate::status::ago(e.ts, now)
+                            ))
+                            .build();
+                        let mut body = e.steps.join("\n");
+                        if !e.error.is_empty() {
+                            body.push_str(&format!("\n\nERROR: {}", e.error));
+                        }
+                        ex.set_child(Some(
+                            &Label::builder()
+                                .label(&body)
+                                .xalign(0.0)
+                                .selectable(true)
+                                .wrap(true)
+                                .css_classes(["monospace", "nn-connect-step"])
+                                .build(),
+                        ));
+                        list.append(&ex);
+                    }
+                }
+            }
+            glib::ControlFlow::Break
+        }
+        Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+        Err(_) => glib::ControlFlow::Break,
     });
 }
 
@@ -909,6 +1118,7 @@ fn open_place(
                     offer_key_setup(&window2, &place2);
                     state2.borrow_mut().connecting.remove(&id);
                     state2.borrow_mut().connects.insert(id.clone(), progress);
+                    link_into_home(&place2);
                     if mount::is_mounted(&place_mp) {
                         let _ = mount::open_in_files(&place_mp);
                     }
@@ -1013,9 +1223,15 @@ fn build_place_card(
 
     let mounted = mount::is_mounted(&place.mount_point());
     let has_error = !place.last_error.is_empty() && !mounted;
+    let offline = if mounted { None } else { offline_text(&place.id) };
+    if offline.is_some() {
+        card.add_css_class("nn-offline");
+    }
     let badge = Label::builder()
         .label(if mounted {
             "Mounted"
+        } else if offline.is_some() {
+            "Offline"
         } else if has_error {
             "Error"
         } else {
@@ -1032,6 +1248,15 @@ fn build_place_card(
         .build();
     row.append(&badge);
     card.append(&row);
+    if let Some(text) = &offline {
+        card.append(
+            &Label::builder()
+                .label(text)
+                .halign(Align::Start)
+                .css_classes(["nn-hero-sub"])
+                .build(),
+        );
+    }
 
     // Inline connect status (phrase + chevron log + progress + failure actions).
     let status = Rc::new(InlineConnectStatus::new());

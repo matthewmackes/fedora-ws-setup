@@ -9,6 +9,7 @@ pub mod keys;
 pub mod media;
 pub mod mount;
 pub mod place;
+pub mod status;
 pub mod ui;
 
 pub use config::{Config, CONFIG_DIR, CREDS_DIR, MOUNT_ROOT};

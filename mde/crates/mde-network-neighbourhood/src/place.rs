@@ -224,7 +224,7 @@ impl Place {
             credential_scope: CredentialScope::Machine,
             drive_letter: None,
             automount: true,
-            mount_policy: MountPolicy::MountNow,
+            mount_policy: MountPolicy::Automount,
             options: String::new(),
             url: String::new(),
             comment: String::new(),

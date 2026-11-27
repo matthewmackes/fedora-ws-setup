@@ -265,6 +265,20 @@ impl NeighbourhoodService {
         Ok("ok".into())
     }
 
+    /// Recent connection attempts as JSON, newest first. `arg` = "<limit>[:<place id>]".
+    async fn get_history(&self, arg: String) -> zbus::fdo::Result<String> {
+        let (limit, place) = match arg.split_once(':') {
+            Some((l, p)) => (l.parse().unwrap_or(50), Some(p.to_string())),
+            None => (arg.parse().unwrap_or(50), None),
+        };
+        serde_json::to_string(&crate::status::recent(limit, place.as_deref())).map_err(to_fdo)
+    }
+
+    /// Reachability per place id: {reachable, last_seen}.
+    async fn get_reachability(&self) -> zbus::fdo::Result<String> {
+        serde_json::to_string(&crate::status::load_seen()).map_err(to_fdo)
+    }
+
     async fn place_status(&self, id: String) -> zbus::fdo::Result<String> {
         let cfg = Config::load().map_err(to_fdo)?;
         let place = cfg
@@ -386,6 +400,7 @@ fn method_timeout_secs(method: &str) -> u64 {
     match method {
         // Keep the GUI responsive — never sit on List/Ping for the full mount window.
         "ListPlaces" | "GetSettings" | "DaemonPing" | "PlaceStatus" | "ParseUri" | "HasSshKey"
+        | "GetHistory" | "GetReachability"
         | "ListDiscovered" | "GetDiscoveryStatus" | "GetConnectStatus" => 8,
         "BeginAdminSession" | "SetSettings" | "RemovePlace" | "UnmountPlace"
         | "DisableAutomount" | "UpsertPlace" | "CancelConnect" | "OpenMountLogs" => 30,
@@ -418,7 +433,7 @@ where
 pub fn call_sync(method: &str, body: &str) -> Result<String> {
     match method {
         "ListPlaces" | "GetSettings" | "Discover" | "ListDiscovered" | "GetDiscoveryStatus"
-        | "BeginAdminSession" | "DaemonPing" => {
+        | "BeginAdminSession" | "DaemonPing" | "GetReachability" => {
             if method == "BeginAdminSession" {
                 with_proxy(method, |p| p.call::<_, _, ()>(method, &()))?;
                 Ok(String::new())
@@ -434,7 +449,7 @@ pub fn call_sync(method: &str, body: &str) -> Result<String> {
         }
         "SetSettings" | "RemovePlace" | "MountPlace" | "UnmountPlace" | "DisableAutomount"
         | "PlaceStatus" | "ParseUri" | "GetConnectStatus" | "CancelConnect" | "OpenMountLogs"
-        | "HasSshKey" | "SetupSshKey" => {
+        | "HasSshKey" | "SetupSshKey" | "GetHistory" => {
             if matches!(
                 method,
                 "SetSettings" | "RemovePlace" | "UnmountPlace" | "DisableAutomount"
@@ -568,6 +583,18 @@ pub fn cancel_connect_sync(id: &str) -> Result<()> {
 
 pub fn open_mount_logs_sync(id: &str) -> Result<String> {
     call_sync("OpenMountLogs", id)
+}
+
+pub fn get_history_sync(limit: usize, place: Option<&str>) -> Result<Vec<crate::status::HistoryEntry>> {
+    let arg = match place {
+        Some(p) => format!("{limit}:{p}"),
+        None => limit.to_string(),
+    };
+    Ok(serde_json::from_str(&call_sync("GetHistory", &arg)?)?)
+}
+
+pub fn get_reachability_sync() -> Result<std::collections::HashMap<String, crate::status::Seen>> {
+    Ok(serde_json::from_str(&call_sync("GetReachability", "")?)?)
 }
 
 pub fn has_ssh_key_sync(id: &str) -> Result<bool> {

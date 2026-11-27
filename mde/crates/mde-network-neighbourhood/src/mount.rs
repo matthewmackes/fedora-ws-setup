@@ -711,6 +711,25 @@ pub fn mount_now_with_log(place: &Place) -> (Result<()>, Vec<String>) {
             }
         }
     }
+    if !matches!(&run, Err(e) if crate::connect::is_cancelled(&place.id)
+        || e.downcast_ref::<Cancelled>().is_some())
+    {
+        let progress = crate::connect::ConnectProgress::load(&place.id);
+        crate::status::record(&crate::status::HistoryEntry {
+            id: place.id.clone(),
+            name: place.name.clone(),
+            ts: crate::status::now_secs(),
+            ok: run.is_ok(),
+            phrase: progress.phrase.clone(),
+            error: progress.error.clone(),
+            cause: progress.diagnosis.cause.clone(),
+            steps: progress
+                .steps
+                .iter()
+                .map(|s| format!("{} {} — {}", if s.ok { "✓" } else { "✗" }, s.label, s.detail))
+                .collect(),
+        });
+    }
     (run, log)
 }
 
