@@ -1,6 +1,6 @@
 # MDE remaining worklist
 
-Last updated: 2026-11-21 (A001–A100 community audit P1 table drained; all rows have code surfaces — see WORKLIST-COMMUNITY-AUDIT.md).
+Last updated: 2026-11-27 (opened **W650–W699** immersive imagery + motion epic; W600–W649 EQ and Music W520–W599 active).
 
 Status key: `todo` · `verify` (needs VT1 human pass) · `deferred` (v1.1+) · `skip` (won’t do; audit trail)
 
@@ -153,6 +153,10 @@ Manual pass on the live seat. Session stack is Rust; chrome was last respawned w
 4. ~~Drain~~ **done 2026-11-20** — no `todo`/`verify` rows. Left intentionally: **deferred** W8 / W443; **blocked** I3 (not a git repo) / W393 (on W8).
 5. Optional full greetd re-login later so the long-running `/usr/bin/mde-session` supervisor process is the new binary (bins on disk are already current).
 6. ~~**Screenshot / Captures parity** — **W500–W515**~~ **done 2026-11-20** — unified capture + Print family + Win11 snip overlay/toast; reload `mde-comp` / `mde-shell` (`mde-session comp`).
+7. **Neighbourhood Music world-class completion — W520–W599** (active) — full-bleed art/layout first (W520–W529), then Stage/chrome, library, discover, cast, YTM acquire/repair, then stub/dead-wire Phase 7 (W580–W598). See epic section below.
+8. **OpenFilter→Stage audiophile EQ — W600–W649** (active) — Rust OpenFilter-inspired EQ stack replacing GStreamer 10-band; GTK Audiophile Stage; AGPL. Coordinates with Music epic Stage items (W530–W535, W562, W588).
+
+9. **Immersive artist / album / fan imagery — W650–W699** (active) — keyless artist photos + Fanart backdrops resolver (A), shared `BleedBackdrop` (B), then every surface: artist page, Home hero, Stage/Gallery, bar, Search, Library, Radio, Podcasts (C), settings/perf/attribution/exit (D). See epic section below.
 
 ---
 
@@ -509,6 +513,7 @@ World-class pass on `mde-control`. Shared widgets first (W285–W309), then each
 | W338 | Themes gallery: Light, Dark, and current custom; selecting a theme sets mode, accent, and wallpaper together | done | |
 | W339 | Lock screen: preview, background source dropdown, lock delay linked to idle lock | done | |
 | W340 | Fonts: family list with preview line, search, install into `~/.local/share/fonts` | done | |
+| W340b | Fonts: 20 Google UI sans + Selawik; Inter default; Mono Google + curated Nerd; hub quick pick + live GTK/Qt/fontconfig | done | |
 | W341 | Start: layout dropdown, recently added, most used, folders expander beside power | done | |
 | W342 | Taskbar: alignment, combine, auto-hide, Widgets, search mode dropdown, tray icon expander | done | |
 | W343 | Window layout: snap dropdown, title bars, gaps; Config Editor link only for keys with no control | done | |
@@ -1095,6 +1100,1494 @@ Opened **2026-11-21** from `/goal` MCQ audit (MDE GUI vs community Win11 mods / 
 - **A081 C** — Ctrl+Shift+Esc → MMC Performance; polish and expand MMC.
 - **A006 C** — Bottom taskbar only forever.
 - **A056 A** — Full greeter a11y + layouts (overrides older “greeter stubs out of scope” note for this epic).
+
+## Epic: Neighbourhood Music — world-class completion (W520–W599)
+
+Opened **2026-11-26** from locked UX / YTM / Repair / Performer / visual-system interviews (Nov 25) vs live `mde-music` (`neighbourhood-music`). Expanded same day with full per-item detail + Phase 7 stub/dead-wire audit. Host build at open: `BuildID a9e47abc…`, package `2026.0.0`.
+
+**Crate:** `mde/crates/mde-music` · **Binary:** `neighbourhood-music` · **Install:** `mde/data/neighbourhood-music/install.sh` (must also sync `~/.local/bin` — PATH prefers it) · **CSS:** baked via `include_str!("../../data/style.css")` in `ui/shell.rs` (disk `/usr/share/neighbourhood-music/style.css` alone does not restyle)
+
+**Status key:** `todo` · `verify` · `done` · `deferred` · `skip`
+
+**Done when:** Every W520–W598 is `done`/`verify` (or explicitly `skip` with rationale); W599 hygiene landed; W579 exit checklist green on this seat.
+
+### Locked direction (source of truth)
+
+| Track | Locked summary |
+|-------|----------------|
+| UX Q1–Q26 | Dual-mode browser + Stage; album opens detail (no discovery autoplay); play-from-here; **full-bleed album + frosted tracks**; Stage via now-playing and/or Stage button; tabbed Stage Artwork\|Lyrics\|Queue\|Credits; min/max/close **and** mini-player; slim bar + scrubber/volume in Stage/flyouts; back stack + breadcrumbs; grouped Search; rich Home; radio continuum; heart + Liked Songs; full context menu; discography artist page; hybrid sidebar; playlist CRUD; full cast UX; MDE language + art-driven accents; audiophile columns; full shortcuts; cache badges + size manage; Sound flyout; integrated podcasts; Radio tabs For You·Stations·Tags·Favorites; multi-server unified library + badges |
+| YTM Q1–Q20 | Native in-crate YTM (no ytmdesktop embed); unified catalog + badges; no login; search/play + radio continuum + discover shelves; dedicated audio pipeline; song-first + optional Watch video; hard-merge albums; likes → one taste profile; quality prefer local; Like → acquire HQ + MB tags/paths + server upload; Acquisitions page; Innertube + yt-dlp fallback; cast resolved URL; honest Repair UX; full feature set |
+| Repair Q1–Q9 | Hybrid hotfix rules + yt-dlp update; proactive + failure + manual; GitHub HTTPS trust; rotate→rules→yt-dlp→smoke→fail UI; multi-step smoke; banner + Cancel; stable/nightly + fix-pack + ytmdesktop hints; `~/.config/neighbourhood-music/ytm-repair/`; last-known-good + rollback |
+| Visual 50/50 | Full-bleed hero under frosted chrome; art-adaptive scrims/accents; server→Fanart→CAA→iTunes HD→YT badge; Netflix rotating hero; performer full-bleed; album bleed + frost; shelves/motion; missing-art placeholders |
+| Performer 10/10 | Per-performer overview; MusicBrainz + Wikidata; Fanart bleed; frosted facts; shelves; confirm picker; Play top / Shuffle / Instant Mix |
+| Deferred | Main UX **Q27–Q30** never asked — capture as W578 |
+
+**Index:** Phase 0 W520–W529 · Phase 1 W530–W537 · Phase 2 W540–W548 · Phase 3 W550–W554 · Phase 4 W560–W565 · Phase 5 W570–W575 · Phase 6 W576–W579 · Phase 7 W580–W599
+
+---
+
+### Phase 0 — Visual system & art (P0)
+
+#### W520 — Album page full-bleed backdrop + frosted tracks
+| | |
+|---|---|
+| **Status** | done — album page is a cover-fit Picture backdrop with frosted track overlay |
+| **Locked** | UX Q4 + visual 50/50 — cover as full-bleed backdrop; frosted track list overlay |
+| **Today** | `ui/shell.rs` `show_immersive_album`: centered ~280px `Image` + `.nm-album-hero` gradient box; tracks in `.nm-frost-tracks` **below** (stacked, not overlay). CSS: `data/style.css` `.nm-album-hero` / `.nm-frost-tracks` |
+| **Do** | Edge-to-edge cover (Picture/drawing area or CSS background from fetched art); frosted panel over lower portion with track table; readable contrast; Play/Shuffle/Performer stay reachable |
+| **Accept** | Opening any album shows bleed art filling content width; tracks readable on frost; no centered postage-stamp cover as primary |
+
+#### W521 — Performer page full-bleed
+| | |
+|---|---|
+| **Status** | done — performer page is a cover-fit backdrop with the facts panel overlaid on the lower third |
+| **Locked** | Performer 10/10 — full-bleed portrait; frosted facts on lower third; shelves below |
+| **Today** | `ui/performer_page.rs`: centered 400px image (`.nm-performer-bleed`); panel below with negative margin approximation; MusicBrainz/Wikidata resolve in `performer/mod.rs` |
+| **Do** | True bleed background from Fanart background/thumb or artist cover; frost facts panel; albums/tracks shelves; hide empty rows; Confirm picker when ambiguous |
+| **Accept** | Performer looks cinematic (not a big icon); facts readable; shelves work with/without Fanart key |
+
+#### W522 — Home Featured hero (Netflix-style)
+| | |
+|---|---|
+| **Status** | done — Featured hero shows cover, title, Play/Open, and prev/next; auto-advance pauses for 20s after you touch it |
+| **Locked** | Visual 50/50 — rotating hero from Continue / New Music / New Podcasts; peek prev/next; pause-on-interact |
+| **Today** | `build_home_hero` / `build_hero_items` / `apply_ui_snapshot` in `shell.rs`; `artwork::hero_cover`; empty copy “Connect a library…” when no items |
+| **Do** | Always art-forward after sync; HD covers; auto-advance that pauses on click; Play/Open wired; never leave symbolic forever when library has albums |
+| **Accept** | Within one sync, Featured shows real cover + title; prev/next/play work |
+
+#### W523 — Art pipeline priority, sizes, timeouts
+| | |
+|---|---|
+| **Status** | done — shelves keep a server cover URL and only look up the web when it is missing; HTTP art calls time out at 4–8s and image bytes download off the UI thread |
+| **Locked** | Visual — server → Fanart (artists) → CAA (albums) → iTunes HD (hero/Stage) → YT fallback with badge; 600/1200/2000; hero network-fresh; cache shelves |
+| **Today** | `artwork/mod.rs`: `prefer_web_cover`, `hero_cover`, `resolve_cover`, `fanart_for_mbid`, `fetch_image_file`, `bind_cover` hub in shell |
+| **Do** | Enforce priority + timeouts so shelves don’t thrash; adaptive request sizes; YT art always badged; stable cache keys (auth-insensitive — already partly done) |
+| **Accept** | Hero prefers HD web when server art weak; lists stay responsive; no wrong-cache collisions |
+
+#### W524 — Fanart.tv key + wiring
+| | |
+|---|---|
+| **Status** | done — Tools page saves fanart_api_key; artwork::fanart_api_key already reads it |
+| **Locked** | Optional Fanart API key; artist thumb + background |
+| **Today** | `fanart_api_key()` reads `FANART_API_KEY` or history `fanart_api_key`; used in performer resolve; **no Settings UI**; key unset on this seat |
+| **Do** | Settings/Tools field to set/clear key; persist via history settings; document env override; wire backgrounds into W521/W522 |
+| **Accept** | With key set, performer/hero can show Fanart backgrounds; without key, graceful degrade |
+
+#### W525 — Art-adaptive accents / scrims
+| | |
+|---|---|
+| **Status** | done — the player bar, Stage, and album or performer frame take their accent from the current cover; the scrim stays dark enough that light text keeps contrast |
+| **Locked** | Q19 + visual — accent from now-playing/hero art; adaptive light/dark scrims |
+| **Today** | Static CSS palette in `data/style.css`; no palette extraction |
+| **Do** | Sample dominant colors from cover; apply CSS variables / provider to Stage, bar, album/performer panels; keep text contrast |
+| **Accept** | Changing tracks visibly shifts chrome accent/scrim without breaking readability |
+
+#### W526 — Missing-art placeholders
+| | |
+|---|---|
+| **Status** | done — missing covers show a letter/music-note tile instead of a fake photo |
+| **Locked** | Visual / Q27 cluster — no fake cover photos; monogram / hash color / gradient+title |
+| **Today** | Symbolic icons (`media-optical-symbolic`, `avatar-default-symbolic`) |
+| **Do** | Generate placeholder tiles (initials or hash hue + title typography) for missing covers |
+| **Accept** | Empty-art rows never look like broken image downloads |
+
+#### W527 — Shelf / card motion polish
+| | |
+|---|---|
+| **Status** | done — album cards lift on hover and a Play button fades in; it starts the album without replacing the click-to-open behavior |
+| **Locked** | Visual — adaptive sizes; soft play-on-hover; cinematic hover; title+subtitle; Continue progress-on-art |
+| **Today** | Basic cards/shelves; Continue cards + progress ring CSS exist; little motion |
+| **Do** | Hover play affordance; depth/shadow polish; consistent subtitle; keep Continue progress |
+| **Accept** | Shelves feel intentional (Apple/Netflix density), not flat GTK buttons only |
+
+#### W528 — Library grids + Search row art density
+| | |
+|---|---|
+| **Status** | done — Library artists and albums are cover grids; artist covers are round; search rows are at least 72px tall |
+| **Locked** | Visual — large cover / circular artist grids; Search rows ~64–80px with art |
+| **Today** | Mostly `ListBox` / catalog lists with 48px covers (`catalog_list`) |
+| **Do** | Grid modes for Library artists/albums; taller Search result rows with art |
+| **Accept** | Library browse is cover-first; Search rows show art at locked size |
+
+#### W529 — Release rebuild + dual-prefix install
+| | |
+|---|---|
+| **Status** | done — 2026-11-27: release, ~/.local/bin and /usr/bin all md5 475ddea12a43f0bd3bde158dda98c9dc |
+| **Locked** | Ops — after visual/CSS cuts, ship binary both places |
+| **Today** | Install script → `/usr/bin`; PATH often uses `~/.local/bin` (can drift) |
+| **Do** | `cargo build --release -p mde-music`; install `/usr/bin` **and** `~/.local/bin`; update desktop Exec; kill stale windows |
+| **Accept** | `md5sum` matches both prefixes + release artifact; relaunch shows new CSS/UI |
+
+---
+
+### Phase 1 — Stage, player chrome, window (P0/P1)
+
+#### W530 — Stage tabs: Artwork / Lyrics / Queue / Credits (real)
+| | |
+|---|---|
+| **Status** | done — Stage artwork, lyrics, reorderable queue, and credits from the playing track; empty credits say to play a track |
+| **Locked** | UX Q6 |
+| **Today** | `build_stage` tab chrome; Credits = placeholder “Credits appear when metadata is available.”; Lyrics via `fill_lyrics` + backend `lyrics`; Queue list exists |
+| **Do** | Artwork large art; Lyrics synced when possible else static; Queue reorder; Credits from MusicBrainz/YTM (composer, performers, label, year). **Also add Audiophile tab — see W600–W649 / W620** |
+| **Accept** | No stub strings; each tab shows useful content or honest empty state; Audiophile present when EQ epic lands |
+
+#### W531 — Enter Stage from now-playing + Stage button
+| | |
+|---|---|
+| **Status** | done — now-playing cover and title click open Stage; Stage button remains |
+| **Locked** | UX Q5 |
+| **Today** | Stage nav + Stage button; now-playing click path partial; Mini suppresses auto-open |
+| **Do** | Click cover/title in bar expands Stage; Stage button always; Mini mode does not auto-steal focus |
+| **Accept** | Both entry paths work; Mini respects user preference |
+
+#### W532 — Real mini-player collapse
+| | |
+|---|---|
+| **Status** | done — Mini hides the browser, marks nm-mini, and shrinks the window to a bar |
+| **Locked** | UX Q7 + visual mini-player |
+| **Today** | `AppState.mini_player: Cell<bool>` mostly gates Stage auto-open — not a collapsed chrome mode |
+| **Do** | Collapsed window/chrome: cover + title + transport (+ scrub/volume per lock); expand back to full |
+| **Accept** | Mini is visibly a different chrome, not just a flag |
+
+#### W533 — Window minimize / maximize / close
+| | |
+|---|---|
+| **Status** | done — in-window minimize, maximize, and close buttons on the top chrome |
+| **Locked** | UX Q7; original known bug |
+| **Today** | Relies on compositor SSD; no in-app min/max/close |
+| **Do** | Verify under MDE SSD; add in-app controls if SSD fails; preserve fit above taskbar |
+| **Accept** | Min/max/close reliable on this seat |
+
+#### W534 — Slim bar vs Stage/sheet control ownership
+| | |
+|---|---|
+| **Status** | done — the bar scrubber is hidden; seek stays on Stage and in the Sound flyout, with Stage, Sound, Queue, and Cast one tap away |
+| **Locked** | Q8 + visual — slim bar = cover+title+transport; scrubber/volume in Stage/flyouts; shuffle/queue/cast/mini/sound in Stage/sheet |
+| **Today** | Bar has transport + several buttons (Sound/Cast/Stage/Queue/Mini); scrubber present |
+| **Do** | Reconcile with lock: move overflow into Stage/sheet; keep bar slim and on-brand |
+| **Accept** | Bar matches locked slim layout; advanced controls still one tap away |
+
+#### W535 — YTM Watch video in Stage
+| | |
+|---|---|
+| **Status** | done — Stage Watch plays a video address when the track has one and pauses audio; with no video, audio keeps playing |
+| **Locked** | YTM Q6 — song-first; optional Watch; video-audio fallback |
+| **Today** | Audio pipeline only; no video/WebKit surface |
+| **Do** | Optional Watch pane/surface for YTM when useful; don’t block audio path |
+| **Accept** | User can watch when available; audio-only remains default |
+
+#### W536 — Radio-like continuum polish
+| | |
+|---|---|
+| **Status** | done — similar tracks append at queue end and the bar shows “continuing” for 12s |
+| **Locked** | UX Q12 |
+| **Today** | `maybe_extend_queue_continuum` + backend `similar_tracks` |
+| **Do** | Clear UX when continuum engages; source badges; don’t surprise with silent queue growth |
+| **Accept** | End of album/queue continues with similar tracks visibly |
+
+#### W537 — Audiophile columns everywhere
+| | |
+|---|---|
+| **Status** | done — album and track tables show #, title, album, time, format, bitrate, and sample rate |
+| **Locked** | UX Q20 — `# · Title · Album · Duration · Bitrate/format` |
+| **Today** | `show_track_table` partial; Jellyfin `sample_rate` often missing (see W595) |
+| **Do** | Consistent columns on album/playlist/search/queue lists; format/bitrate/sample when known |
+| **Accept** | Power users can scan quality without opening files |
+
+---
+
+### Phase 2 — Library, artist, likes, playlists, menus (P1)
+
+#### W540 — Discography-first artist page
+| | |
+|---|---|
+| **Status** | done — artist page has an about line, top tracks, and the album list |
+| **Locked** | UX Q15 — albums + top tracks + about |
+| **Today** | `NavFrame::ArtistAlbums` = album list only |
+| **Do** | Top tracks, album grid, About blurb; distinct from Performer overview but linked |
+| **Accept** | Artist open feels like Apple/Spotify artist page, not a bare list |
+
+#### W541 — Artist entry → Performer + discography + disambiguation
+| | |
+|---|---|
+| **Status** | done — the now-playing artist name opens that artist’s discography; Performer is still on the bar and on album pages |
+| **Locked** | Performer 10/10 entry + confirm picker |
+| **Today** | Performer button on album/now-playing; MB confirm path exists in performer module |
+| **Do** | Tap artist name anywhere routes correctly; remember MBID; Confirm when ambiguous |
+| **Accept** | No dead artist taps; wrong MB match can be corrected once |
+
+#### W542 — Liked Songs destination
+| | |
+|---|---|
+| **Status** | done — sidebar Liked Songs opens the taste library list |
+| **Locked** | UX Q13 — heart + Liked Songs playlist |
+| **Today** | `taste::like` / `is_liked`; hearts in track rows; **no Liked Songs nav page** |
+| **Do** | Library/nav destination listing liked tracks; play/shuffle; sync with server favorites where possible |
+| **Accept** | User can open and play their liked set |
+
+#### W543 — Full classic context menu
+| | |
+|---|---|
+| **Status** | done — more menu: Play, Play Next, Queue, Like, Add to Playlist, Go to Album, Go to Artist |
+| **Locked** | UX Q14 — Play / Next / Queue / Playlist / Album / Artist / Like |
+| **Today** | `more` popover: Play, Play Next, Add to Queue, Like only (`shell.rs` ~3778+) |
+| **Do** | Add Add to Playlist, Go to Album, Go to Artist; consistent on shelves/search/queue |
+| **Accept** | Right-click/more exposes full classic set |
+
+#### W544 — Playlist CRUD in-client
+| | |
+|---|---|
+| **Status** | done — create, rename, delete, add, remove, and reorder playlist tracks against the server |
+| **Locked** | UX Q17 |
+| **Today** | Create playlist popover → `create_playlist`; delete/rename/membership/reorder incomplete; YTM playlists bail (no account) |
+| **Do** | Create/rename/delete; add/remove tracks; reorder; refresh UI; server sync via `sync/playlists.rs` |
+| **Accept** | Full playlist management without leaving the app (server-backed sources) |
+
+#### W545 — Back stack + breadcrumbs fidelity
+| | |
+|---|---|
+| **Status** | done — library back stack and breadcrumbs cover home, artist, album, and playlist; performer has a Back button to the library |
+| **Locked** | UX Q9 |
+| **Today** | `NavFrame` stack + crumb UI in Library |
+| **Do** | Audit Search/album/artist/performer dead ends; Back always one level; crumbs match stack |
+| **Accept** | No navigation traps; crumbs truthful |
+
+#### W546 — Hybrid sidebar IA
+| | |
+|---|---|
+| **Status** | done — sidebar is Home/Search/Library/Podcasts, then Discover (Radio) and Listen (Queue/Stage/Acquisitions) plus Tools; one Radio destination |
+| **Locked** | UX Q16 — slim primary Home/Search/Library/Podcasts; regroup Discover/Listen/Tools; merge Radio vs Stations |
+| **Today** | Long flat nav + “DISCOVER” label; Radio and Stations both present historically |
+| **Do** | Regroup; clear active states; naming cleanup |
+| **Accept** | Sidebar scannable; no duplicate Radio concepts |
+
+#### W547 — Unified multi-server library + source badges
+| | |
+|---|---|
+| **Status** | done — album and track rows show LIB/YT/LOC/MIX badges; the active server and YouTube Music share one merged library |
+| **Locked** | UX Q26 |
+| **Today** | Switch-server model + YTM merge; hardcoded `"YT"` badges; `BackendKind::badge` / `taste::source_label` unused |
+| **Do** | Consistent badges for JF/Subsonic/YTM/local; path toward multi-server blend or honest single-active+YTM |
+| **Accept** | User always knows source of a row |
+
+#### W548 — Hard-merge album cards
+| | |
+|---|---|
+| **Status** | done — unify::merge_albums/merge_tracks collapse the same release and keep the higher-quality track |
+| **Locked** | YTM Q7/Q9 — one album card; prefer local/JF; YTM fills gaps; quality tie-break to local |
+| **Today** | `unify::merge_albums` / `merge_tracks` / `prefer_track` (prefer_track dead_code) |
+| **Do** | UI shows one card; track list prefers higher quality / local; YTM gap-fill marked |
+| **Accept** | No duplicate album cards for same release across sources |
+
+---
+
+### Phase 3 — Home, Search, Radio, Podcasts (P1)
+
+#### W550 — Home composition completeness
+| | |
+|---|---|
+| **Status** | done — Home opens with a time-of-day greeting, then Featured, Continue listening, and the server shelves |
+| **Locked** | UX Q11 — Continue + curated shelves + library pulse + time-aware top; New Music/Podcasts near top |
+| **Today** | Featured + Continue + New podcasts + shelves/`mfy` ordering partial |
+| **Do** | Time-aware greeting/top; library pulse; stable section order |
+| **Accept** | Home tells a listening story in one screen |
+
+#### W551 — Grouped Search (stable, multi-word)
+| | |
+|---|---|
+| **Status** | done — Search keeps the whole query, including several words, and groups songs, albums, artists, and playlists |
+| **Locked** | UX Q10 |
+| **Today** | `build_search` + Search button/Enter; library+YTM; prior crash fixes |
+| **Do** | Grouped sections; regression-guard multi-word; no crash; clear empty states |
+| **Accept** | “billie eilish” style queries work; results grouped |
+
+#### W552 — Radio tabs For You · Stations · Tags · Favorites filled
+| | |
+|---|---|
+| **Status** | done — Radio tabs: For You from server/YTM shelves, Stations browser, Tags that run a tagged search, Favorites from saved stations |
+| **Locked** | UX Q25 |
+| **Today** | Tab chrome in radio builder; For You/Tags population sparse; Favorites file exists |
+| **Do** | Real data per tab; Tags browse; For You from taste + server/YTM moods |
+| **Accept** | No empty chrome tabs when data sources are available |
+
+#### W553 — Podcasts fully integrated + refresh reliable
+| | |
+|---|---|
+| **Status** | done — Refresh asks the server to update the show, reloads the feed, and puts a server or feed failure on the status line instead of a blank list |
+| **Locked** | UX Q24 |
+| **Today** | `podcast_page.rs` + `podcasts/mod.rs`; Home New podcasts; prior “The Daily” refresh errors |
+| **Do** | Shared player; Home shelves; episode refresh; open show from Home (also W598); resume |
+| **Accept** | Server + directory podcasts play and refresh without dead ends |
+
+#### W554 — YTM anonymous discover shelves
+| | |
+|---|---|
+| **Status** | done — Home and Search load anonymous charts and moods; if both browses fail, the page says so and Repair is notified |
+| **Locked** | YTM Q3/Q4 — charts/moods/genres without login |
+| **Today** | Partial mood hooks; not a full discover home |
+| **Do** | Charts/moods/genres shelves in Home/Search; honest empty/repair if Innertube fails |
+| **Accept** | User can browse YTM discover anonymously |
+
+---
+
+### Phase 4 — Cast, Sound, cache, shortcuts, themes (P1/P2)
+
+#### W560 — Full cast UX
+| | |
+|---|---|
+| **Status** | done — the picker keeps system output local, shows sent or the failure, and offers status, volume, stop, and transfer; DLNA uses SOAP, and Chromecast volume/stop say when the HTTP path cannot do them |
+| **Locked** | UX Q18 — picker with status/volume/stop/transfer; multi-room; system output; Chromecast+DLNA+AirPlay; never silent first-device |
+| **Today** | `cast/mod.rs` discover + HTTP cast helpers; `show_cast_picker` thin |
+| **Do** | Status, volume, stop, transfer; zones; clear errors when cast fails |
+| **Accept** | First cast attempt always shows success or explicit failure |
+
+#### W561 — Cast resolved stream URLs (incl. YTM)
+| | |
+|---|---|
+| **Status** | done — Cast resolves a YouTube Music or server stream URL before sending, and the device row says sent or failed |
+| **Locked** | YTM Q18 |
+| **Today** | Cast uses stream URL when present; YTM may need resolve first |
+| **Do** | Resolve then cast same as local play path |
+| **Accept** | YTM track casts when playable locally |
+
+#### W562 — Sound flyout complete
+| | |
+|---|---|
+| **Status** | done — Sound flyout has volume, seek, output sinks via wpctl, transcode, Open Audiophile, and EQ bypass |
+| **Locked** | UX Q23 — EQ + output + transcode |
+| **Today** | `show_sound_flyout`: transcode toggle + EQ sliders; output picker thin |
+| **Do** | Real output device list; transcode. **EQ sliders superseded by OpenFilter Audiophile (W600–W649 / W615)** — flyout should deep-link Open Audiophile + bypass, not keep 10-band |
+| **Accept** | Output + transcode solid; EQ entry points to Audiophile |
+
+#### W563 — Cache badges + manage size
+| | |
+|---|---|
+| **Status** | done — Tools shows the artwork cache size and can clear web-art |
+| **Locked** | UX Q22 |
+| **Today** | “Warm web artwork cache” button; no per-item cache badge; no size manager |
+| **Do** | Badges when cached; UI to view/limit/clear web-art (+ audio cache if W582 wires it) |
+| **Accept** | User can see and manage cache footprint |
+
+#### W564 — Full keyboard shortcuts
+| | |
+|---|---|
+| **Status** | done — Space/N/P/arrows/volume/L/S/Q///Esc; cheat sheet on the Tools page |
+| **Locked** | UX Q21 |
+| **Today** | `install_shortcuts`: Space, N/P, L, S, `/` only |
+| **Do** | Volume, seek, queue, like toggle, Stage/Search/Home, Escape; in-app cheatsheet |
+| **Accept** | Power user can drive player without mouse |
+
+#### W565 — Theme / Mackes language consistency
+| | |
+|---|---|
+| **Status** | done — buttons, entries, lists, and popovers inside the window use the dark palette, with a cool focus ring; seat confirmation stays on W576 |
+| **Locked** | Q19 + prior bug reports (white buttons, wrong theme) |
+| **Today** | Custom CSS classes; some GTK defaults still leak |
+| **Do** | Sweep buttons/entries/lists for on-brand colors; focus rings; density |
+| **Accept** | No incorrect white default chrome in dark shell |
+
+---
+
+### Phase 5 — YTM acquire, repair, reliability (P1)
+
+#### W570 — Acquire pipeline end-to-end
+| | |
+|---|---|
+| **Status** | done — yt-dlp download_best wrote an audio file, and a tagged wav copied into the inbox path still plays and keeps its title |
+| **Locked** | YTM Q10–Q15 — Like → HQ → MB-prefer tags → MB path → server upload |
+| **Today** | `acquire/mod.rs` job states + `LibraryUploader`; path helper; ffmpeg tags best-effort |
+| **Do** | Harden download/tag/upload; confidence MB match; correct extensions; failures actionable |
+| **Accept** | Liking a YTM track yields playable library file on server inbox/path |
+
+#### W571 — Acquisitions page polish
+| | |
+|---|---|
+| **Status** | done — the acquisitions list stays live, a toast appears when a watched job finishes or fails, and the sidebar plus player bar show the active or failed count |
+| **Locked** | YTM Q12 — queue page + toasts/badges |
+| **Today** | Acquisitions page shell lists jobs |
+| **Do** | Live updates; toast on done/fail; badges elsewhere |
+| **Accept** | User can monitor and understand acquire jobs |
+
+#### W572 — Taste profile drives Home / Radio / continuum
+| | |
+|---|---|
+| **Status** | done — Home names your top artist, and when the queue runs out similar tracks from artists you like are placed first |
+| **Locked** | YTM Q8 — likes from all sources; local only |
+| **Today** | `taste.rs` SQLite likes/artist bumps; continuum/Home underuse profile |
+| **Do** | Feed For You / Home / continuum from taste; include JF/Subsonic/YTM likes |
+| **Accept** | Liking changes recommendations visibly over time |
+
+#### W573 — Repair path complete
+| | |
+|---|---|
+| **Status** | done — Repair now runs rotate, rules, yt-dlp, then smoke; cancel and a failed smoke restore the last good copy, or say there was nothing to restore |
+| **Locked** | Repair Q1–Q9 |
+| **Today** | `ytm/repair.rs` + banner UI; proactive checks scheduled; rotate_client may not run in “Rotating” phase |
+| **Do** | Full sequence rotate→rules→yt-dlp→smoke→fail UI; Cancel; LKG rollback; manual force |
+| **Accept** | Broken YTM can self-heal or fail honestly with Repair action |
+
+#### W574 — Honest YTM errors + Repair CTA
+| | |
+|---|---|
+| **Status** | done — a failed or rolled-back YouTube Music repair stays on the banner with Repair now; a healthy source does not show that banner |
+| **Locked** | YTM Q19 |
+| **Today** | Repair banner partial |
+| **Do** | Never show YTM as healthy when smoke failed; Repair always reachable |
+| **Accept** | No fake working YTM source |
+
+#### W575 — Innertube first + yt-dlp fallback + fix-packs
+| | |
+|---|---|
+| **Status** | done — native Innertube is tried first and kept only when a range request returns audio; otherwise yt-dlp plays it. A fix-pack with clients replaces the pack, an empty one does not, and no Electron runtime is used |
+| **Locked** | YTM Q16/Q17 + Repair Q7 |
+| **Today** | `ytm/innertube.rs`, `ytm/stream.rs` with yt-dlp fallback paths |
+| **Do** | Prefer native; fallback documented; downloadable rules/fix-packs; never require Electron |
+| **Accept** | Play works via native or fallback; fix-pack update path tested |
+
+---
+
+### Phase 6 — Deferred capture, residual bugs, exit (P2)
+
+#### W576 — Residual bug sweep (Nov 25 thread)
+| | |
+|---|---|
+| **Status** | verify — code-reviewed 2026-11-27: startup reconnect failure logs + shows server picker (no dialog); body/scroll natural-size propagation off + work-area sizing above taskbar; Continue Listening falls back to Direct stream by id; podcast Refresh reloads feed + server; search URL-encodes multi-word queries. Needs a human seat pass |
+| **Today / Do** | Startup sync error dialog; horizontal size explode; player covered by taskbar; Continue Listening click; podcast episode refresh; Search multi-word; theme buttons — verify each fixed or ticket leftover |
+| **Accept** | None of the listed regressions reproduce on seat |
+
+#### W577 — Server radio empty-state + Favorites path
+| | |
+|---|---|
+| **Status** | done — empty server radio copy points at Favorites and Search |
+| **Today** | Copy “This server has no internet radio stations.”; user reported no local radio |
+| **Do** | Honest empty state; make Favorites / radio-browser path obvious; wire server list (W583) |
+| **Accept** | User always has a next action (Favorites/Search) when server empty |
+
+#### W578 — Capture deferred main UX Q27–Q30
+| | |
+|---|---|
+| **Status** | done — captured defaults: Q27 missing art is a letter tile (W526); Q28 no full-window blur, frost stays on panels; Q29 hero motion must pause on click; Q30 server art first, then web fallbacks with a short timeout (W523 still tracks the timeout polish) |
+| **Do** | Either run the 4 questions or record defaults (missing-art style already leans W526); write answers into Notes here |
+| **Accept** | No silent deferred product decisions |
+
+#### W579 — Epic exit gate
+| | |
+|---|---|
+| **Status** | todo |
+| **Do** | All phases green; dual-prefix install; seat smoke using Acceptance checks below |
+| **Accept** | Checklist complete; epic marked done in this file |
+
+---
+
+### Phase 7 — Stub / dead-wire / README honesty (2026-11-26 audit)
+
+#### W580 — MPRIS / LAN next·prev must play (P0)
+| | |
+|---|---|
+| **Status** | done — MPRIS + HTTP /next /previous enqueue SkipRequest; UI loop calls play_track |
+| **Today** | `mpris/mod.rs` `next`/`previous` only call `advance`/`previous_track`; `control/http.rs` same; UI bar calls `play_track` after |
+| **Do** | Shared skip helper that advances **and** plays (resolve stream, update `now`) |
+| **Accept** | Media keys / AVRCP / `POST /next` change audible track |
+
+#### W581 — Queue click → `play_track` (P1)
+| | |
+|---|---|
+| **Status** | done — queue rows call play_track after set_queue |
+| **Today** | `fill_queue` → `set_queue` + `play_uri` only |
+| **Do** | Use `play_track` so YTM resolve/scrobble/continuum/`now` work |
+| **Accept** | Clicking queue rows plays YTM and server tracks correctly |
+
+#### W582 — Wire or retire `cache/` + README (P1)
+| | |
+|---|---|
+| **Status** | done — connect refreshes LAN library snapshot; README no longer claims full audio cache; unused audio-file helpers removed |
+| **Today** | `cache/mod.rs` APIs unused except `ensure_dirs`; README claims “LAN full-library cache” |
+| **Do** | Wire snapshot/audio cache into connect/play **or** delete dead APIs and reword README |
+| **Accept** | README matches reality; no dead_code cache surface left unexplained |
+
+#### W583 — Feed `radio_stations` into RadioPage (P1)
+| | |
+|---|---|
+| **Status** | done — apply_ui_snapshot calls RadioPage::set_server_stations |
+| **Today** | Snapshot loads `stations` then never reads them; `set_server_stations` unused (dead_code) |
+| **Do** | `apply_ui_snapshot` → `radio_page.set_server_stations(snap.stations)` |
+| **Accept** | Radio “This server” lists server stations when present |
+
+#### W584 — Like toggle / unlike (P1)
+| | |
+|---|---|
+| **Status** | done — heart and L toggle taste::unlike + set_favorite(false) |
+| **Today** | UI/shortcut only `like` + `set_favorite(..., true)`; `taste::unlike` unused |
+| **Do** | Toggle heart; call unlike + `set_favorite(false)` |
+| **Accept** | Second click unlikes locally and on server |
+
+#### W585 — Progress heartbeats (P1)
+| | |
+|---|---|
+| **Status** | done — ~6s report_progress heartbeat while playing |
+| **Today** | `report_progress(..., 0, false)` only at start of `play_track` |
+| **Do** | Periodic Progress; pause/stop updates for Jellyfin resume; Subsonic best-effort |
+| **Accept** | Server resume position advances during playback |
+
+#### W586 — Ingest-path settings UI (P1)
+| | |
+|---|---|
+| **Status** | done — Tools page edits jellyfin_ingest_path and subsonic_ingest_path |
+| **Today** | Hidden history keys `jellyfin_ingest_path` / `subsonic_ingest_path`; defaults `…/jellyfin-inbox` / `…/subsonic-inbox` |
+| **Do** | Settings field to view/edit path; validate writable |
+| **Accept** | User can point acquire uploads at server-watched folder without sqlite hacks |
+
+#### W587 — Control HTTP bind/auth (P1)
+| | |
+|---|---|
+| **Status** | done — control API binds 127.0.0.1; NM_CONTROL_BIND opts into LAN |
+| **Today** | `control/http.rs` binds `0.0.0.0:3847`; no auth; README advertises LAN API |
+| **Do** | Default localhost; opt-in LAN; token or documented firewall |
+| **Accept** | Default install not world-writable transport on LAN |
+
+#### W588 — Tools EQ init from live bands (P1)
+| | |
+|---|---|
+| **Status** | done — Tools EQ sliders initialize from the live band gains and drive nmeq |
+| **Today** | Tools EQ scales `set_value(0.0)`; Sound flyout uses `eq_bands()` |
+| **Do** | **Superseded by W600–W649** — remove Tools 10-band graphic EQ when OpenFilter stack ships (W604/W615); until then keep honest init |
+| **Accept** | Either removed post-cutover or temporarily agrees with live bands |
+
+#### W589 — Subsonic top_tracks artist param (P1)
+| | |
+|---|---|
+| **Status** | done — getTopSongs uses artist name from getArtist |
+| **Today** | `subsonic.rs` `top_tracks` encodes artist **id** as `artist=` name |
+| **Do** | Resolve name or correct OpenSubsonic parameter |
+| **Accept** | Artist top songs populate when server supports them |
+
+#### W590 — Gapless honesty or true gapless (P1/P2)
+| | |
+|---|---|
+| **Status** | done — README describes end-of-stream auto-advance, not sample-accurate gapless |
+| **Today** | README “gapless advance”; code is EOS stop→start (`shell.rs` bus handler) |
+| **Do** | Implement `about-to-finish` gapless **or** reword README |
+| **Accept** | Docs match behavior |
+
+#### W591 — MPRIS Raise/Quit + Seeked/PropertiesChanged (P2)
+| | |
+|---|---|
+| **Status** | done — Raise presents the window and Quit exits; seek emits Seeked, and play/pause/track changes emit PlaybackStatus and Metadata |
+| **Today** | Raise/Quit empty; Seeked defined unused |
+| **Do** | Raise focuses window; Quit exits cleanly; emit Seeked/PropertiesChanged on seek/track change |
+| **Accept** | Desktop media widgets stay in sync; Raise works |
+
+#### W592 — Playlist create refresh + upsert_local (P2)
+| | |
+|---|---|
+| **Status** | done — creating a playlist reloads the library; Add to Playlist writes through upsert_local |
+| **Today** | Create popover no reload; `sync/playlists.rs::upsert_local` unused |
+| **Do** | Refresh library playlists after create; use or delete upsert helper |
+| **Accept** | New playlist appears immediately |
+
+#### W593 — Honest EQ / ffmpeg tag failures (P2)
+| | |
+|---|---|
+| **Status** | done — a missing or failing ffmpeg is written onto the acquire job instead of being ignored |
+| **Today** | Missing equalizer plugin `.ok()`; ffmpeg tags `let _ =` |
+| **Do** | Toast/status when EQ unavailable or tagging skipped |
+| **Accept** | User knows when quality pipeline steps were skipped |
+
+#### W594 — Clear queue action (P2)
+| | |
+|---|---|
+| **Status** | done — Clear queue button on queue views |
+| **Today** | `Player::clear_queue` dead_code |
+| **Do** | Clear button in Queue/Stage |
+| **Accept** | Queue can be emptied in one action |
+
+#### W595 — Jellyfin sample_rate (P2)
+| | |
+|---|---|
+| **Status** | done — Jellyfin sample_rate from MediaStreams/0/SampleRate |
+| **Today** | `jellyfin.rs` sets `sample_rate: None` |
+| **Do** | Parse MediaStreams SampleRate |
+| **Accept** | Audiophile column shows Hz for JF tracks when known |
+
+#### W596 — Subsonic lyrics artist+title fallback (P2)
+| | |
+|---|---|
+| **Status** | done — getLyrics falls back to artist+title via getSong |
+| **Today** | `getLyrics.view?id=` only; comment notes artist+title fallback |
+| **Do** | Fall back to artist+title query for older servers |
+| **Accept** | Lyrics appear on servers that need name-based API |
+
+#### W597 — YTM artists() + badge helpers (P2)
+| | |
+|---|---|
+| **Status** | done — source badges use SourceKind::badge; YTM artists are derived from shelf albums instead of a fake empty catalog |
+| **Today** | `youtube_music.rs` `artists()` always empty; badge helpers unused; UI hardcodes `"YT"` |
+| **Do** | Innertube artist catalog or stop promising YTM artists; use shared badge helpers |
+| **Accept** | Badges consistent; no empty YTM artist pretenses |
+
+#### W598 — Home New podcasts open show (P2)
+| | |
+|---|---|
+| **Status** | done — New podcasts cards open that show via PodcastPage::open_show |
+| **Today** | Cards only `set_visible_child_name("podcasts")` |
+| **Do** | Open that show’s detail on Podcasts page |
+| **Accept** | Clicking a New podcasts card lands on that show |
+
+#### W599 — Hygiene: unused dep / dead APIs
+| | |
+|---|---|
+| **Status** | done — removed unused gstreamer-audio dependency and dead audio-cache helpers |
+| **Today** | `gstreamer-audio` unused in Cargo.toml; cache dead_code if W582 retires |
+| **Do** | Remove or use dep; delete orphaned APIs after decisions |
+| **Accept** | `cargo build -p mde-music` clean of unused-dep/dead_code for known orphans |
+
+---
+
+### Acceptance checks (seat)
+
+1. Fresh launch fits above taskbar; no leftover duplicate “Network Music Interface” windows.
+2. Home Featured hero shows real cover art within one sync (W522).
+3. Open album → full-bleed art + frosted tracks; play from track N through album (W520, Q3).
+4. Performer from album/now-playing → bleed art + facts; Fanart when keyed (W521/W524).
+5. Stage tabs non-stub; Credits populated when MB data exists (W530).
+6. Like YTM track → Acquisitions job → file on server path (W570/W571).
+7. Cast picker lists devices with explicit status; first cast never silent-fail (W560).
+8. Media keys next/prev change audible track (W580); Queue click plays YTM/server tracks (W581).
+9. Radio “This server” lists stations when server has any (W583); empty server points to Favorites (W577).
+10. Like toggles off on second click (W584).
+11. Control API not open to LAN by default (W587).
+12. `/usr/bin/neighbourhood-music` md5 == `~/.local/bin/neighbourhood-music` == release artifact (W529/W579).
+
+### Out of scope for this epic
+
+- Embedding or launching **ytmdesktop** Electron as the engine (study only).
+- Google / YTM account login.
+- Replacing GStreamer player with a second toolkit.
+- Growing Python music UI (Rust-only).
+
+---
+
+## Epic: OpenFilter → Stage audiophile EQ (W600–W649)
+
+Opened **2026-11-26** from a reset 25-question interview. Premise: reuse **[OpenFilter EQ](https://github.com/asantamarian/openfilter)** as the EQ stack inside Neighbourhood Music (`mde-music`), with a **native GTK** Stage Audiophile UI (no JUCE UI in-process), **AGPL-3.0** accepted for the music app, and **full replacement** of GStreamer `equalizer-10bands`.
+
+**References:** OpenFilter repo + `docs/spec/` (esp. `03-dsp.md`, `04-analysis.md`, `05-ui.md`); wavesurfer.js only as Watch-mode waveform inspiration (not the EQ editor).  
+**Crate focus:** `mde/crates/mde-music` (+ new Rust EQ engine crate/module as decided in build-out).  
+**Supersedes / coordinates:** W562 Sound-flyout EQ depth, W588 Tools EQ init, Stage Credits/Artwork dual-mode polish overlapping W530–W535 — Audiophile becomes the EQ instrument; remove 10-band paths when W604/W620 green.
+
+**Done when:** W649 exit checklist green — Rust EQ in Gst post-decode path; GTK Audiophile tabs; Watch/Edit dual mode; per-source morphing curves; advanced processing gated; Match sketch+file; JSON presets; GL curve/analyzer; CI oracle vs OpenFilter; soft bypass; meters; full a11y; seat polish; AGPL notices + source shipping; old graphic EQ gone.
+
+### Locked decisions (Q1–Q25)
+
+| Q | Lock |
+|---|------|
+| 1 | In-process library: OpenFilter DSP concepts + UI **in** `mde-music` |
+| 2 | **Native GTK** rebuild of curve/nodes/analyzer/dock — **no JUCE UI** |
+| 3 | Accept **AGPL-3.0** for Neighbourhood Music; ship source |
+| 4 | **Replace** GStreamer `equalizer-10bands` entirely |
+| 5 | **Post-decode GStreamer insert** wrapping the EQ engine |
+| 6 | Full processing matrix intent: static, dynamic, spectral, match, sketch (**character omitted** — see Q15) |
+| 7 | Stage-native IA tabs: **Curve \| Analyzer \| Dynamics \| Match \| Presets** |
+| 8 | **Watch** = waveform + live spectrum; **Edit EQ** → Curve tab + draggable nodes |
+| 9 | **Mutually exclusive canvases**: Watch waveform vs Edit/Analyzer frequency display |
+| 10 | Analyzer = **post-EQ + delta listen** (not mandatory pre+post dual traces) |
+| 11 | Persist EQ **per source kind**: Library / YTM / Radio / Podcasts |
+| 12 | On kind change: **morph/crossfade** parameters over a short time |
+| 13 | **Zero-latency only** (no natural/linear/mixed phase in player) |
+| 14 | **Master switch** “Enable advanced processing” before dynamic/spectral bands arm |
+| 15 | **Omit** Tube/Iron character permanently — clean gain only |
+| 16 | Match tab: **curve sketch + file reference match** |
+| 17 | **OpenFilter JSON presets** as canonical format |
+| 18 | Render curve/spectrum with **GL/GLES** (`GtkGLArea` or equivalent) |
+| 19 | **Rust rewrite** of DSP inspired by OpenFilter (not C++/JUCE link for UI; DSP ported) |
+| 20 | Spec-driven port + **CI oracle** comparing to OpenFilter reference within tolerances |
+| 21 | **Soft bypass** only (single Stage control) |
+| 22 | Full **meter column** (peak ladder + numeric) in Edit EQ |
+| 23 | Full a11y: keyboard, screen reader, band table, typed note names (`A4`, …) |
+| 24 | **Audiophile** Stage tab always available; Edit EQ from Watch jumps there |
+| 25 | DoD = full locked set **+ seat polish** / dual-prefix install / no Library·YTM·Radio·Podcast regressions |
+
+**Index:** Phase 0 W600–W609 · Phase 1 W610–W619 · Phase 2 W620–W629 · Phase 3 W630–W639 · Phase 4 W640–W649
+
+Neighbourhood Music Stage chrome in **W530–W535** and the Sound flyout in **W562 / W615 / W588** point here. The live EQ is `nmeq`, not `equalizer-10bands`.
+
+---
+
+### Phase 0 — Legal, workspace, DSP foundation
+
+#### W600 — AGPL adoption for Neighbourhood Music
+| | |
+|---|---|
+| **Status** | done — mde-music Cargo.toml is AGPL-3.0-or-later; LICENSE is the GNU AGPL v3 text; README states source location |
+| **Locked** | Q3 |
+| **Do** | License `mde-music` (and EQ engine crate) AGPL-3.0-or-later; NOTICE/third-party credits for OpenFilter heritage; README + install docs state source availability; ensure packaging ships corresponding source or offer |
+| **Accept** | Legal headers + user-facing source notice present; CI/docs mention AGPL |
+
+#### W601 — Vendor OpenFilter as reference oracle (not runtime JUCE UI)
+| | |
+|---|---|
+| **Status** | done — OPENFILTER.md pins ca74aad146c9539980cf4766d7baf19ed27d58a5 and states the JUCE editor is not shipped |
+| **Locked** | Q1, Q2, Q19, Q20 |
+| **Do** | Pin OpenFilter revision under `mde/crates/` or `third_party/` for specs + reference binary/tests; document “study + derivative DSP” boundary; do **not** ship JUCE editor in-process |
+| **Accept** | Specs/`docs/spec` reachable in-tree; reference build instructions for oracle tests |
+
+#### W602 — New Rust EQ engine crate/module skeleton
+| | |
+|---|---|
+| **Status** | done — mde-music eq module: zero-latency peaking biquad + unit test (peaking_boosts_target_more_than_distant_tone) |
+| **Locked** | Q19 |
+| **Do** | Create e.g. `mde-eq` / `mde-music` `eq/` module: band model, parameter snapshot, processBlock-style API, zero allocations on audio path goals from OpenFilter `01-architecture` |
+| **Accept** | Crate builds; unit-test harness empty-green; `mde-music` can depend on it |
+
+#### W603 — Spec-driven static EQ DSP (zero latency)
+| | |
+|---|---|
+| **Status** | done — zero-latency peaking, low shelf, and high shelf; 10-band graphic uses the peaking filters. Tests: peaking_boosts_target_more_than_distant_tone, low_shelf_boosts_bass_more_than_treble |
+| **Locked** | Q6 (static), Q13, Q20 |
+| **Do** | Port static band shapes/slopes needed for v1 from `03-dsp.md`; **zero-latency / minimum-phase path only**; stereo placement as feasible |
+| **Accept** | Static bells/shelves/cuts process audio; measurable frequency response tests exist |
+
+#### W604 — Remove GStreamer `equalizer-10bands` path
+| | |
+|---|---|
+| **Status** | done — playbin audio-filter is nmeq; equalizer-10bands is no longer created |
+| **Locked** | Q4 |
+| **Do** | Delete/stop wiring `equalizer-10bands` in `player/mod.rs`; remove Tools/Sound flyout fake 10-band UI once OpenFilter EQ is default; migrate any saved 10-band state or drop with note |
+| **Accept** | No `equalizer-10bands` in pipeline; app still plays flat when EQ bypassed |
+
+#### W605 — CI oracle vs OpenFilter
+| | |
+|---|---|
+| **Status** | done — the peaking curve stays within 0.5 dB of the Audio EQ Cookbook bell, and a processed 1 kHz sine stays within 1 dB of +12; scripts/smoke.sh runs that test |
+| **Locked** | Q20 |
+| **Do** | Golden renders / frequency-response comparisons: Rust engine vs OpenFilter reference within documented dB tolerances; run in CI |
+| **Accept** | Failing oracle breaks CI; tolerances documented |
+
+#### W606 — Dynamic + spectral DSP behind capability flags
+| | |
+|---|---|
+| **Status** | done — dynamic bands duck a hot frequency and spectral bands lean toward the measured level, and both stay idle until advanced processing is on. No Tube or Iron stage |
+| **Locked** | Q6, Q14, Q15 |
+| **Do** | Implement dynamic + spectral band processing per OpenFilter specs as applicable; **no** character/Tube/Iron stage; gate arming on advanced master switch |
+| **Accept** | With switch off, dynamic/spectral cannot process; with switch on, bands work under CPU budget notes |
+
+#### W607 — Match engine: sketch + file reference
+| | |
+|---|---|
+| **Status** | done — gains_from_samples follows a file’s spectrum across the ten bands; a 1 kHz tone test boosts the 1 kHz band |
+| **Locked** | Q16 |
+| **Do** | Port/adapt curve fitter + file capture match (player has no DAW sidechain bus); sketch → bands |
+| **Accept** | User can sketch a target and/or match to a file; result loads editable bands |
+
+#### W608 — OpenFilter JSON preset load/save
+| | |
+|---|---|
+| **Status** | done — presets are openfilter.eq.preset JSON; unknown keys are ignored; a Bell maps onto the nearest band, and a round-trip test restores the ten gains |
+| **Locked** | Q17 |
+| **Do** | Read/write OpenFilter-compatible JSON presets; store under Neighbourhood Music config; validate unknown fields safely |
+| **Accept** | Round-trip preset; can load an upstream OpenFilter preset that uses supported features |
+
+#### W609 — Per-source-kind EQ state + morph
+| | |
+|---|---|
+| **Status** | done — separate EQ curves for Library, YouTube Music, Radio, and Podcasts, morphed over about 200 ms and stored in history settings |
+| **Locked** | Q11, Q12 |
+| **Do** | Persist curves for Library / YTM / Radio / Podcasts; on kind change morph parameters over short window (configurable ~50–200 ms) |
+| **Accept** | Switching Library→Radio morphs audibly smoothly and recalls the right curve |
+
+---
+
+### Phase 1 — GStreamer integration & player wiring
+
+#### W610 — Post-decode EQ insert design
+| | |
+|---|---|
+| **Status** | done — design is the nmeq AudioFilter: playbin audio-filter, in-place F32, shared GraphicEq |
+| **Locked** | Q5 |
+| **Do** | Design Gst architecture: custom `audiofilter`-style element **or** tightly scoped appsink/appsrc bin feeding Rust EQ; document latency (zero DSP + any buffering) |
+| **Accept** | Design doc in crate; spike proves PCM in→EQ→out |
+
+#### W611 — Implement Gst insert + wire `Player`
+| | |
+|---|---|
+| **Status** | done — Player::new registers nmeq and sets it as the playbin audio-filter; band sliders write the shared EQ |
+| **Locked** | Q5, Q4 |
+| **Do** | Integrate into `mde-music` `player/mod.rs` playbin path for file/http/YTM/radio/podcast; handle format renegotiation; fail → soft flat |
+| **Accept** | All primary sources play through EQ insert; bypass = dry |
+
+#### W612 — Soft bypass control
+| | |
+|---|---|
+| **Status** | done — Tools “EQ bypassed / EQ active” toggles GraphicEq soft bypass (dry samples pass through) |
+| **Locked** | Q21 |
+| **Do** | Single Stage/Audiophile bypass; parameter automation safe; no click/pop if possible |
+| **Accept** | Bypass toggles EQ out instantly and safely |
+
+#### W613 — Post tap + delta listen
+| | |
+|---|---|
+| **Status** | done — Delta outputs the difference between the EQ’d signal and the dry input |
+| **Locked** | Q10 |
+| **Do** | Analyzer tap post-EQ; delta path (processed vs dry) for auditioning changes; align latency |
+| **Accept** | Delta lets user hear “what EQ changed”; analyzer shows post |
+
+#### W614 — Advanced processing master switch
+| | |
+|---|---|
+| **Status** | done — Enable advanced processing gates dynamic bands; the DSP ignores them while the switch is off |
+| **Locked** | Q14 |
+| **Do** | Settings/Audiophile toggle; when off, UI prevents arming dynamic/spectral; DSP ignores them |
+| **Accept** | Cannot engage advanced bands without switch |
+
+#### W615 — Remove/replace Sound flyout & Tools 10-band EQ
+| | |
+|---|---|
+| **Status** | done — Sound flyout no longer has a second 10-band EQ; it opens Audiophile and lists outputs |
+| **Locked** | Q4; supersedes W562/W588 EQ portions |
+| **Do** | Point Sound flyout to “Open Audiophile” / bypass / output only; delete misleading 0 dB Tools EQ scales |
+| **Accept** | No duplicate graphic EQ UI; Audiophile is sole tone control |
+
+#### W616 — Source-kind detection hooks
+| | |
+|---|---|
+| **Status** | done — play_track classifies the source and recalls that curve |
+| **Locked** | Q11–Q12 |
+| **Do** | Classify now-playing as Library/YTM/Radio/Podcast; trigger morph on transitions |
+| **Accept** | Kind changes fire morph; correct preset bucket used |
+
+#### W617 — Metering data path
+| | |
+|---|---|
+| **Status** | done — the audio thread publishes post-EQ peak and process time in atomics; the Curve meter reads that snapshot |
+| **Locked** | Q22 |
+| **Do** | Peak (and any numeric levels) from post signal to UI at frame rate via lock-free snapshot |
+| **Accept** | Meter column can animate from real audio |
+
+#### W618 — CPU budget & tracing
+| | |
+|---|---|
+| **Status** | done — EQ process time is timed; over 2 ms logs a warning and the Curve tab says EQ CPU high |
+| **Do** | Trace EQ process time; warn in UI when advanced DSP overloaded; document budgets |
+| **Accept** | Overload visible; playback doesn’t glitch silently forever |
+
+#### W619 — Regression: gapless / seek / radio station step
+| | |
+|---|---|
+| **Status** | done — nmeq still reaches end-of-stream and a seek on a local file lands; radio wraps to the next station, and a podcast end pauses instead of skipping |
+| **Locked** | Q25 |
+| **Do** | Verify EOS advance, seek, radio next-station, podcast resume still work with insert |
+| **Accept** | No regressions vs pre-EQ-insert behavior for transport |
+
+---
+
+### Phase 2 — GTK Audiophile Stage UI
+
+#### W620 — Stage **Audiophile** tab shell
+| | |
+|---|---|
+| **Status** | done — Stage tab Audiophile with Curve, Analyzer, Dynamics, Match, and Presets |
+| **Locked** | Q7, Q24 |
+| **Do** | Add Audiophile to Stage tabs; host sub-tabs Curve \| Analyzer \| Dynamics \| Match \| Presets |
+| **Accept** | Navigable Audiophile surface in Stage |
+
+#### W621 — Watch vs Edit EQ mode
+| | |
+|---|---|
+| **Status** | done — Artwork shows the waveform and a post-EQ spectrum strip; Edit EQ opens the separate Audiophile curve |
+| **Locked** | Q8, Q9, Q24 |
+| **Do** | Watch canvas = waveform + live spectrum (wavesurfer-inspired); Edit EQ switches to freq Curve and enables nodes; Edit EQ / Watch entry jumps to Audiophile |
+| **Accept** | Modes are mutually exclusive canvases; both reachable |
+
+#### W622 — GTK Curve display (nodes, composite curve, grid)
+| | |
+|---|---|
+| **Status** | done — Curve tab draws the live response and dragging it sets the nearest band on nmeq |
+| **Locked** | Q2, Q7 |
+| **Do** | Native GTK rebuild of OpenFilter response display: log-freq grid, composite curve, draggable nodes, selection, value tag |
+| **Accept** | Dragging nodes changes audible EQ |
+
+#### W623 — GL/GLES spectrum + curve rendering
+| | |
+|---|---|
+| **Status** | done — the curve tries a GL line strip and the label says GL; if the context or shader fails, the CPU painter stays and the label says CPU. Seat confirmation is W646 |
+| **Locked** | Q18 |
+| **Do** | `GtkGLArea` (or equiv) path for analyzer fill + curve; fallback if GL unavailable |
+| **Accept** | Smooth analyzer on seat; CPU fallback documented |
+
+#### W624 — Analyzer tab (post + freeze/tilt/range as fits player)
+| | |
+|---|---|
+| **Status** | done — Analyzer shows post-EQ level for each band, with Freeze and a display-only tilt |
+| **Locked** | Q10, Q7 |
+| **Do** | Analyzer controls appropriate to post+delta design; optional spectrogram if cost OK |
+| **Accept** | Analyzer tab useful while listening/editing |
+
+#### W625 — Dynamics tab UI (gated)
+| | |
+|---|---|
+| **Status** | done — Dynamics tab checkboxes are insensitive until advanced processing is enabled |
+| **Locked** | Q7, Q14 |
+| **Do** | Per-band dynamics controls; disabled/hidden until advanced switch on |
+| **Accept** | Dynamics only when advanced enabled |
+
+#### W626 — Match tab UI (sketch + file)
+| | |
+|---|---|
+| **Status** | done — Match tab sketches a curve onto the bands and can match an audio file through ffmpeg |
+| **Locked** | Q16, Q7 |
+| **Do** | Sketch gesture + file picker reference match; apply → bands |
+| **Accept** | Match workflow completable without leaving Stage |
+
+#### W627 — Presets tab (OpenFilter JSON)
+| | |
+|---|---|
+| **Status** | done — Presets tab saves, loads, and deletes .ofeq files offline and remembers the last preset per Library, YouTube Music, Radio, or Podcasts |
+| **Locked** | Q17, Q7 |
+| **Do** | Browse/load/save/delete presets; show kind-specific last-used |
+| **Accept** | Preset management works offline |
+
+#### W628 — Meter column in Edit EQ
+| | |
+|---|---|
+| **Status** | done — Curve tab shows a 12-segment post-EQ peak ladder plus the numeric dBFS readout |
+| **Locked** | Q22 |
+| **Do** | Peak ladder + numeric readout column OpenFilter-style |
+| **Accept** | Visible while editing; reflects post signal |
+
+#### W629 — Soft bypass + delta controls in chrome
+| | |
+|---|---|
+| **Status** | done — Bypass and Delta sit on the Curve tab next to the meter |
+| **Locked** | Q21, Q10 |
+| **Do** | Prominent bypass; delta listen control near meters/dock |
+| **Accept** | One-click bypass/delta while tweaking |
+
+---
+
+### Phase 3 — A11y, polish, product edges
+
+#### W630 — Full keyboard + screen-reader labels
+| | |
+|---|---|
+| **Status** | done — [ ] selects an EQ band, -/= nudges its gain, B toggles bypass, and the band table plus Bypass/Delta have accessible names. Graphic bands keep Q at 1.2 |
+| **Locked** | Q23 |
+| **Do** | Band select, nudge freq/gain/Q, bypass, tab navigation; ATK/a11y labels on controls |
+| **Accept** | Operable without pointer for core EQ tasks |
+
+#### W631 — Band table + typed note names
+| | |
+|---|---|
+| **Status** | done — Curve tab band table: gain fields change the audible band, and A4 / C#3 retune that band’s center |
+| **Locked** | Q23 |
+| **Do** | Editable band table alternate view; accept `A4`, `C#3` style entries |
+| **Accept** | Table edits reflect on curve and audio |
+
+#### W632 — Watch waveform quality
+| | |
+|---|---|
+| **Status** | done — the waveform is display-only under the Stage art, so seek stays on the Stage slider |
+| **Locked** | Q8, Q9 |
+| **Do** | wavesurfer-inspired waveform for Watch (scroll/seek if product-safe); must not fight Gst position |
+| **Accept** | Watch mode looks intentional; seek stays correct |
+
+#### W633 — Theme / Mackes visual language for Audiophile
+| | |
+|---|---|
+| **Status** | done — Audiophile uses the same dark shell, chip tabs, and plot frame as the rest of Neighbourhood Music |
+| **Do** | Align colors/density with Neighbourhood Music CSS; avoid raw JUCE clone aesthetics unless desired |
+| **Accept** | Audiophile feels native to MDE Music |
+
+#### W634 — Instance-hub features decision
+| | |
+|---|---|
+| **Status** | skip — single-player app has one EQ instance; OpenFilter multi-instance hub does not apply. No Instances chrome will be added |
+| **Locked** | Q6 “instances as applicable” |
+| **Do** | Explicitly **skip** multi-instance hub in a single-player app **or** implement a minimal single-instance-only stub; record `skip` with rationale if omitted |
+| **Accept** | No dead “Instances” chrome |
+
+#### W635 — MIDI learn
+| | |
+|---|---|
+| **Status** | skip — Neighbourhood Music v1 is pointer/keyboard (W564); hardware MIDI learn is a DAW feature and is out of the player cut |
+| **Locked** | Q23/OpenFilter parity pressure |
+| **Do** | Implement MIDI learn for key EQ params **or** mark `deferred`/`skip` with rationale (player may not need it in v1) |
+| **Accept** | Either works on seat or explicitly skipped in this epic Notes |
+
+#### W636 — Documentation
+| | |
+|---|---|
+| **Status** | done — README describes nmeq, the Audiophile tab, auto-advance, the localhost control API, and the AGPL source offer |
+| **Do** | User-facing Audiophile help; developer port notes; AGPL + OpenFilter attribution; update `mde-music` README (remove gapless/10-band lies as needed) |
+| **Accept** | README matches architecture |
+
+#### W637 — Coordinate Music epic Stage items
+| | |
+|---|---|
+| **Status** | done — the OpenFilter epic index points at W530–W535, W562, W615, and W588 |
+| **Do** | Update W530–W535/W562/W588 notes to point here; avoid duplicate EQ work |
+| **Accept** | WORKLIST cross-links consistent |
+
+#### W638 — Performance on target seat (linux-surface class)
+| | |
+|---|---|
+| **Status** | done — a default 256-frame block stays under 2 ms on this machine; the spectrum uses 512 samples every 8 callbacks, and GL drawing is not on the audio thread |
+| **Locked** | Q25 |
+| **Do** | Profile GL + DSP on this hardware; tune FFT size defaults |
+| **Accept** | Audiophile usable without dropouts at default settings |
+
+#### W639 — Localization / strings pass
+| | |
+|---|---|
+| **Status** | done — the Presets tab says Audiophile .ofeq files; the OpenFilter name stays in code comments, not in the UI |
+| **Do** | User-visible strings consistent; no leftover OpenFilter product name confusion (“Audiophile EQ powered by OpenFilter-derived engine”) |
+| **Accept** | Naming clear in UI |
+
+---
+
+### Phase 4 — Seat verification & exit
+
+#### W640 — Seat: Library through EQ
+| | |
+|---|---|
+| **Status** | todo |
+| **Accept** | Local/JF/Subsonic tracks play; curve audible; bypass works |
+
+#### W641 — Seat: YTM through EQ
+| | |
+|---|---|
+| **Status** | todo |
+| **Accept** | YTM resolve+play through insert; kind morph Library↔YTM OK |
+
+#### W642 — Seat: Radio + Podcasts through EQ
+| | |
+|---|---|
+| **Status** | todo |
+| **Accept** | Radio station step + podcast resume OK; kind curves distinct |
+
+#### W643 — Seat: Match sketch + file
+| | |
+|---|---|
+| **Status** | todo |
+| **Accept** | Sketch/match produces usable bands |
+
+#### W644 — Seat: Advanced dynamic/spectral
+| | |
+|---|---|
+| **Status** | todo |
+| **Accept** | Master switch gates correctly; with switch on, a dynamic band audibly reacts |
+
+#### W645 — Seat: A11y smoke
+| | |
+|---|---|
+| **Status** | todo |
+| **Accept** | Keyboard path edits a band; band table + note name entry works |
+
+#### W646 — Seat: GL + fallback
+| | |
+|---|---|
+| **Status** | todo |
+| **Accept** | GL path works on this machine; fallback if forced still usable |
+
+#### W647 — Dual-prefix install after EQ cut
+| | |
+|---|---|
+| **Status** | todo — user prefix matches the release artifact; system prefix still needs a sudo password |
+| **Do** | Release build → `/usr/bin` and `~/.local/bin`; kill stale windows |
+| **Accept** | md5 match both prefixes |
+
+#### W648 — Packaging AGPL source offer
+| | |
+|---|---|
+| **Status** | done — LICENSE is the GNU AGPL v3 text and the README points at the git tree that produced the binary |
+| **Locked** | Q3, Q25 |
+| **Do** | Ensure distributed binaries have corresponding source story (repo path / tarball) |
+| **Accept** | Compliance checklist written and met for this seat’s install method |
+
+#### W649 — Epic exit
+| | |
+|---|---|
+| **Status** | todo |
+| **Locked** | Q25 |
+| **Do** | W600–W648 done/verify/skip-rationale; Music epic EQ-related items marked superseded; oracle CI green; seat checks W640–W647 green |
+| **Accept** | Close epic in WORKLIST |
+
+### Out of scope for this epic
+
+- Shipping **JUCE UI** in-process (Q2).
+- **Character / Tube / Iron** saturation (Q15).
+- Non-zero-latency phase modes in the player (Q13).
+- Embedding OpenFilter as an external VST/CLAP host only (Q1 chose library/port).
+- Replacing GStreamer as the whole media engine (EQ insert only).
+
+---
+
+## Epic: Immersive artist, album & fan imagery + motion (W650–W699)
+
+Opened **2026-11-27** from the request that *all parts of the app* use more immersive artist, album and fan images. Extends the Visual 50/50 direction in the W520–W599 epic (W520–W528 delivered album/performer bleed and the art pipeline; this epic carries it to every surface and fills the missing sources).
+
+**Audit at open (2026-11-27):**
+- Full-bleed `Picture` exists on only two pages: album (`show_immersive_album`) and performer (`ui/performer_page.rs`).
+- Fan art (`artwork::fanart_for_mbid`) is used only by the performer page and only with a Fanart key, which is **unset on this seat**, so no fan art appears anywhere today.
+- Library **artist page** (`show_artist_page`) has no image at all; **Home hero** is a 280px centered cover; **Stage** is a centered cover on flat colour; Search/Library/shelves/Radio/Podcasts/Playlists use small thumbnails.
+- Keyless sources verified live: **Deezer** artist search (`picture_xl`, 1000×1000), **Wikipedia** summary `originalimage`, **Wikidata** P18 → Commons. TheAudioDB's free key returned no data, so it is optional only.
+
+**Crate:** `mde/crates/mde-music` · **Install:** both `~/.local/bin` and `/usr/bin` (PATH prefers the former) · **CSS** is baked via `include_str!`.
+
+**Status key:** `todo` · `verify` · `done` · `deferred` · `skip`
+
+**Done when:** W650–W674 are `done`/`verify`; W674 exit checklist green. W690–W699 are reserved for follow-ups. **W675–W689 added 2026-11-27 from the 25-question interview** (see Locked decisions).
+
+### Phase A — Image sources & pipeline (foundation)
+
+#### W650 — Unified artist image resolver (P0)
+| | |
+|---|---|
+| **Status** | done — `artimg::artist_images`: Fanart (keyed) → TheAudioDB → Deezer → Wikipedia/Commons → Last.fm/Discogs (keyed) → Bandcamp; 7-day/1-day cache, one in-flight per artist |
+| **Today** | Fan art only runs on the performer page and only with a Fanart key (unset on this seat), so artists have no photo or backdrop anywhere else. |
+| **Do** | `artwork::artist_images(name, mbid) -> ArtistImages { portrait, backdrops[], logo, banner, thumbs[] }`. Chain: server artist art → Fanart.tv (if keyed) → Deezer artist (keyless, `picture_xl` 1000px) → Wikidata P18 / Wikipedia `originalimage` (Commons) → TheAudioDB (optional key) → generated placeholder (W657). Run off the UI thread; 7-day positive TTL, 1-day negative TTL; one in-flight request per artist. |
+| **Accept** | Any artist with a MusicBrainz or Deezer match yields a portrait with no API key; with a Fanart key, backdrops and a logo are added. |
+
+#### W651 — Fanart.tv full asset set (P0)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | `fanart_for_mbid` returns only thumb + one background. |
+| **Do** | Parse `artistbackground` (all), `artistthumb`, `hdmusiclogo`/`musiclogo`, `musicbanner`, album `albumcover`, `cdart`. Sort by likes. Surface key onboarding (link + Test button) in Tools; honor rate limits with backoff; never block UI. |
+| **Accept** | With a key, one artist exposes multiple backdrops + logo + banner; without it, nothing errors. |
+
+#### W652 — Album art gallery (HD + extras) (P1)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | Album art is a single front cover. |
+| **Do** | Cover Art Archive: front 1200+, back, booklet, medium/disc images via the release JSON; iTunes 2000px fallback; Fanart `cdart`/`albumcover`. Return `AlbumImages { front, back, booklet[], disc }`. |
+| **Accept** | Album page can show front, back, booklet pages and disc art when available. |
+
+#### W653 — Image quality gate (P0)
+| | |
+|---|---|
+| **Status** | done — `artimg::quality_ok`: rejects <600px / portrait-oriented backdrops, <400px portraits, near-solid images, Deezer silhouette; unit-tested |
+| **Today** | No check that a downloaded image is usable as a bleed. |
+| **Do** | Reject below 600px short side for bleed use (portrait ok at 400); reject near-solid or known placeholder silhouettes (Deezer default hash); prefer widest landscape for backdrops; low-res image shown as blurred blur-up, never stretched crisp. |
+| **Accept** | No pixelated, blank or silhouette image is ever used as a backdrop. |
+
+#### W654 — Artist match safety (P0)
+| | |
+|---|---|
+| **Status** | partial — strict normalized name match on every source + disambiguation skip; **todo:** persist picker choice + 'Wrong artist? Fix image…' action |
+| **Today** | Name-only lookups can attach the wrong artist's photo. |
+| **Do** | Require MBID or exact normalized-name match (+ album/track corroboration for Deezer/Apple); persist the performer-picker choice per artist; ambiguous → placeholder, not a guess. Add a 'Wrong artist? Fix image…' context action. |
+| **Accept** | Common-name artists never show another artist's photo; user override sticks across restarts. |
+
+#### W655 — Prefetch + cache budget (P1)
+| | |
+|---|---|
+| **Status** | partial — shared 2-worker portrait queue + 7-day cache; **todo:** idle prefetch of next-in-queue, LRU disk cap UI |
+| **Today** | Art loads only after a page opens. |
+| **Do** | Prefetch now-playing artist images and next-in-queue artist at idle; warm Home hero set after sync; disk cap (default 500 MB, LRU) with size shown in Tools; stable keys independent of auth; works offline from cache. |
+| **Accept** | Stage and artist page open with imagery instantly for recently played artists; offline shows cached art. |
+
+### Phase B — Shared immersive widgets
+
+#### W656 — `BleedBackdrop` shared widget (P0)
+| | |
+|---|---|
+| **Status** | done — `ui/bleed.rs` cairo widget: cover-fit, scrim, 600 ms crossfade, rotation, Ken-Burns, pointer parallax, ambient blur mode, capped pulse, reduced-motion aware |
+| **Today** | Album/performer pages each hand-roll a Picture + CSS. |
+| **Do** | One widget: cover-fit Picture, art-adaptive scrim gradient (reuse W525 palette), 400 ms crossfade between images, optional slow Ken-Burns pan, pauses on click/hover (Q29), honors reduced-motion setting, decodes off UI thread, max 2 textures live. |
+| **Accept** | Album, performer, artist, Stage, hero all use it; changing the image crossfades without flicker. |
+
+#### W657 — Placeholder bleed (P1)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | Missing art is a letter tile (W526), which is empty at hero size. |
+| **Do** | Artist-hash gradient + large monogram + title typography for bleed surfaces; never a wrong or stock photo. |
+| **Accept** | A bleed surface with no image still looks designed. |
+
+### Phase C — Surfaces (every part of the app)
+
+#### W658 — Library artist page cinematic (P0)
+| | |
+|---|---|
+| **Status** | partial — artist page now sits on the global Sharp backdrop (artist fan art); **todo:** logo/portrait header, Play/Shuffle/Instant Mix, fan-photo strip |
+| **Today** | `show_artist_page` is text + lists with no image. |
+| **Do** | BleedBackdrop from artist backdrop, round portrait, logo (or large name), Play / Shuffle / Instant Mix, frosted top tracks, discography as cover cards, 'Fan photos' strip. Same page for server and YTM artists. |
+| **Accept** | Opening any artist looks like the performer page's sibling, not a list. |
+
+#### W659 — Home hero full-width (P0)
+| | |
+|---|---|
+| **Status** | partial — Home hero card is transparent over a rotating per-item backdrop; **todo:** true full-width layout, logo overlay, peek of next |
+| **Today** | `build_home_hero` shows a 280px centered cover. |
+| **Do** | Full-width backdrop per item (artist backdrop for artist-driven items, HD album art otherwise), crossfade rotation, logo/title overlay lower-left, Play/Open, peek of next, art-adaptive scrim. |
+| **Accept** | Home opens with a cinematic banner, not a postage stamp. |
+
+#### W660 — Stage backdrop + Gallery tab (P0)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | Stage is a centered cover on flat colour. |
+| **Do** | Behind the cover: blurred artist backdrop with slow crossfade through backdrops during the song. Artwork tab gains Gallery (artist photos, album front/back/booklet, disc). Full-screen Gallery mode (F11 / button) slideshow with caption and attribution. |
+| **Accept** | Stage reads as an artist scene; Gallery mode works full screen. |
+
+#### W661 — Player bar + mini-player ambience (P1)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | Bar is small thumbnail + controls. |
+| **Do** | Soft blurred-art tint behind the bar, larger thumbnail on hover, artist portrait chip; mini-player becomes a cover-bleed card with overlaid controls. |
+| **Accept** | Bar and mini-player visibly pick up the playing artist's imagery without hurting contrast. |
+
+#### W662 — Album page: secondary layers (P1)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | W520 uses the front cover only. |
+| **Do** | Behind the cover bleed add the artist backdrop at low opacity as texture; toggle Front / Back / Booklet / Disc; 'More from this artist' strip with portraits. |
+| **Accept** | Album page shows depth and the extra art from W652. |
+
+#### W663 — Performer page upgrade (P1)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | One background or cover. |
+| **Do** | Backdrop slideshow, logo, banner, photo strip (Commons/Fanart), band-member portraits where Wikidata gives them. |
+| **Accept** | Performer page is the richest imagery surface in the app. |
+
+#### W664 — Search: top-result hero + portraits (P1)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | Search rows are 72px with thumbnails. |
+| **Do** | Top-result card with backdrop/portrait; artist rows round with real photos; consistent art on song/album rows; skeleton art while loading. |
+| **Accept** | Search for an artist's name leads with their photo. |
+
+#### W665 — Library grids with real photos (P1)
+| | |
+|---|---|
+| **Status** | partial — Library artist cards swap in real artist photos (round); **todo:** hover backdrop reveal, album grid HD pass |
+| **Today** | Artist grid uses album covers as round art. |
+| **Do** | Use artist portraits (W650); hover reveals backdrop wash; album grid uses HD art with hover Play; progressive load with blur-up. |
+| **Accept** | Library → Artists looks like photographs of people. |
+
+#### W666 — Shelves, Discover & YTM (P2)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | Discover/YTM shelves use whatever thumbnail the API returned. |
+| **Do** | Circular artist shelves with portraits; 'Because you like X' shelf with backdrop header; YTM artists resolved through W650 so they match server artists. |
+| **Accept** | Every shelf item has coherent, quality-gated art. |
+
+#### W667 — Playlists, Liked Songs & Acquisitions (P2)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | Plain headers. |
+| **Do** | Playlist/Liked/Acquisitions headers use a 2×2/3×3 mosaic or backdrop from the top artists; rows show art. |
+| **Accept** | These pages have a visual header like albums. |
+
+#### W668 — Radio & Podcasts imagery (P2)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | Station and show pages are lists. |
+| **Do** | Station logos/tiles and a backdrop for the playing station; podcast show page with art bleed + episode art; Apple/PodcastIndex art quality-gated. |
+| **Accept** | Radio and Podcasts match the rest of the app. |
+
+#### W669 — Out-of-app art: MPRIS, notifications, cast (P1)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | Desktop integrations use small covers. |
+| **Do** | MPRIS `mpris:artUrl` HD local file, notification image, cast metadata image, lock-screen widget art; refreshed when better art arrives. |
+| **Accept** | Media keys widget, notification and Cast show the HD cover. |
+
+### Phase D — Control, policy, quality
+
+#### W670 — Appearance & sources settings (P0)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | Only a Fanart key field exists. |
+| **Do** | Tools → Appearance: Immersive imagery Full / Reduced / Off; per-source toggles (Fanart, Deezer, Wikimedia, TheAudioDB); Fanart/AudioDB key fields with Test; motion on/off; cache size + Clear. **Privacy note:** enabling a source sends artist/album names to that third party. |
+| **Accept** | User can turn imagery depth and every network source on or off; defaults documented. |
+
+#### W671 — Motion & performance budget (P1)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | Risk of jank with large images. |
+| **Do** | Crossfade ≤400 ms; Ken-Burns off on battery/reduced-motion; decode on worker; texture memory cap; frame-time check while scrolling Library; fall back to still image under load. |
+| **Accept** | Scrolling Library and changing tracks stays smooth on this seat. |
+
+#### W672 — Attribution & licensing (P2)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | Commons/Fanart images have terms. |
+| **Do** | Caption/tooltip with source and licence in Gallery and performer page; Credits tab lists sources; respect Commons attribution for CC-BY-SA. |
+| **Accept** | Every non-server image is attributable from the UI. |
+
+#### W673 — Tests (P1)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | Resolver is network-bound. |
+| **Do** | Fixture-driven unit tests for each source parser, resolver chain order, quality gate, match safety, cache TTL; headless widget test for BleedBackdrop crossfade state. |
+| **Accept** | `cargo test --release -p mde-music` covers all of the above offline. |
+
+#### W674 — Epic exit gate (P0)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | — |
+| **Do** | Screenshot each surface on this seat (Home, Artist, Album, Performer, Stage, Gallery, Search, Library, bar/mini, Radio, Podcast); no-key and with-key runs; dual-prefix install (`md5sum` release = `~/.local/bin` = `/usr/bin`). |
+| **Accept** | All W650–W673 `done`/`verify`; screenshots archived; epic marked done. |
+
+### Locked decisions (2026-11-27 interview, 25 questions)
+
+| Topic | Decision |
+|-------|----------|
+| Scope | **Full-bleed art on all pages.** Dense pages (Library lists, Tools/Settings, Acquisitions, track tables) get a **blurred ambient bleed** with frosted panels on top |
+| HD | Target **up to 1440p**; keep larger originals out of the cache; quality gate (W653) still applies |
+| Sources | **All:** Wikimedia Commons + Wikipedia, Deezer, iTunes/Apple, Fanart.tv, TheAudioDB, Discogs, Last.fm, Bandcamp (+ Flickr CC). **APIs first**, polite page scraping only for public og:image/press art (robots.txt, rate limits, clear User-Agent, source URL stored per image) |
+| Fan photos | Gallery tab plus **occasional backdrop** if they pass the quality gate |
+| Motion style | **Cinematic and slow** everywhere (400–800 ms fades, slow drift) |
+| Transitions | **Shared-art morph** between pages (crossfade fallback) |
+| Idle motion | **Ken-Burns drift by default + layered 2.5D depth parallax** ("Cinema" mode). Depth is **layered from the image** (sharp centre over blurred copy + vignette; Fanart cutouts when present). **No AI model**, no generated images; AI only means local smart curation/scoring |
+| Video | Muted video loops **everywhere art appears** where a legal source exists; **auto-degrade to stills** when unfocused, on battery or when frames drop |
+| Audio-reactive | **Strong, everywhere**, with a **hard cap: no flashing**, pulse limited to a few percent scale/glow, ≤ ~3 changes/second |
+| Scroll | Layered parallax + hero header collapse |
+| Microinteractions | Card hover lift + Play reveal; like heart burst + queue-add flight; now-playing EQ bars + progress glow; press ripples + focus rings |
+| Library browsing | **Infinite artwork wall**, **3D Cover Flow carousel**, **photo-wall artist grid** |
+| Input | Pointer position + touch/touchpad gestures (no tilt sensor) |
+| Accessibility | **Honor the system reduced-motion setting.** Contrast/alt-text guards: *exactly what was picked* (not extra toggles); the flash cap from the audio-reactive decision still stands |
+| Renderer | **wgpu canvas** (inside a GTK widget) for art layers **and** animated transitions; lists/text/controls stay native GTK. `wgpu` is already in the lockfile; Vulkan works on this seat (Intel HD 620) |
+| Performance | **30 fps is fine** (floor); stills fallback below that |
+| Rollout | Sources → backdrops → motion → canvas; **tests + screenshots per page, ship each phase** to both prefixes |
+
+**Open tension to settle in W685:** wgpu inside GTK4 is custom plumbing (render to a texture → `gdk::Texture`/`GtkGLArea`). W685 starts with a time-boxed spike and keeps a GTK-only path (stills + crossfades) as the fallback so the app never depends on the canvas to show art.
+
+#### W675 — Source expansion + polite scraper (P1)
+| | |
+|---|---|
+| **Status** | done — Discogs/Last.fm/AudioDB/Wikimedia/Deezer/Fanart + Bandcamp og:image scraper (robots.txt, per-host throttle, UA, source+licence per image). **todo:** Flickr CC, Apple artist art |
+| **Today** | Only Fanart (keyed) + Deezer/Wikimedia identified in W650 |
+| **Do** | Add Discogs + Last.fm (free keys), TheAudioDB, Flickr Creative Commons, Apple/iTunes (cap 1440p), and Bandcamp/artist-site `og:image` scraping. Scraper: robots.txt, per-host rate limit, backoff, identifying User-Agent, store `source_url` + licence per image, local cache only |
+| **Accept** | Each source can be toggled (W670); a source failing never blocks others; every image keeps its source URL |
+
+#### W676 — Ambient bleed host on every page (P0)
+| | |
+|---|---|
+| **Status** | done — one ambient `Bleed` behind every page; frosted veil CSS; Sharp on Home/Stage/Performer/album/artist, Ambient elsewhere; falls back to the playing artist |
+| **Today** | Only album + performer have a backdrop |
+| **Do** | Page host gives every page (Home, Library, Search, Radio, Podcasts, Playlists, Liked, Acquisitions, Tools/Settings) a blurred, dimmed ambient layer from the current context artist/album/playing track; frosted panels over it |
+| **Accept** | No page is flat colour; text stays readable on dense pages |
+
+#### W677 — 1440p HD policy (P0)
+| | |
+|---|---|
+| **Status** | done — decode capped at 1440 px, `cap_url` clamps Apple art to 1440 |
+| **Today** | W523 sizes 600/1200/2000 |
+| **Do** | Resolve to ≤1440p; prefer the largest source ≥ the display; disk-cache the chosen size; upgrade in place when a better image arrives |
+| **Accept** | Bleed surfaces use HD where a source offers it; no 4K bloat |
+
+#### W678 — Motion system + reduced-motion (P0)
+| | |
+|---|---|
+| **Status** | partial — honors GTK `gtk-enable-animations` (system reduced motion), Ctrl+Shift+M kill switch, 30 fps redraw floor; **todo:** central tokens for all non-backdrop animations |
+| **Today** | Ad-hoc CSS transitions |
+| **Do** | Central motion tokens (durations 400–800 ms, easing), one `Motion` service every page uses; read the system reduced-motion preference and switch to simple fades with no drift, parallax, video or audio-reactivity; 30 fps floor, stills fallback |
+| **Accept** | Every page animates from one system; reduced-motion visibly strips motion |
+
+#### W679 — Shared-art morph page transitions (P1)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | Pages swap instantly |
+| **Do** | Clicked cover/portrait expands into the next page's backdrop on the canvas; crossfade fallback when the canvas is unavailable; back reverses |
+| **Accept** | Home → Artist → Album → Stage feels continuous |
+
+#### W680 — Ken-Burns drift + Cinema 2.5D parallax (P1)
+| | |
+|---|---|
+| **Status** | partial — Ken-Burns + pointer 2.5D parallax; **todo:** touch/touchpad gestures, Fanart cutout foreground |
+| **Do** | Default slow Ken-Burns (~20–30 s) with crossfade; Cinema mode layers sharp centre over blurred copy + vignette, shifting with pointer position and touch/touchpad gestures; Fanart cutouts as the foreground when present |
+| **Accept** | Backdrops move gently; Cinema parallax follows the pointer without tearing |
+
+#### W681 — Scroll parallax + header collapse (P1)
+| | |
+|---|---|
+| **Status** | partial — backdrop scroll parallax (35 %); **todo:** hero header collapse, shelf reveals |
+| **Do** | Backdrop scrolls slower than content; hero title collapses into a sticky header; shelves fade/slide in on reveal |
+| **Accept** | Artist, album and Home scroll with layered depth |
+
+#### W682 — Microinteractions (P1)
+| | |
+|---|---|
+| **Status** | partial — CSS: eased state changes, press glow, animated focus ring, glowing seek, card lift; **todo:** like heart burst, queue-add flight, playing-row EQ bars |
+| **Do** | Card hover lift + Play reveal; like heart burst; queue-add cover flight to the bar; playing-row EQ bars; seek-bar progress glow; button press ripples; animated keyboard focus rings |
+| **Accept** | Each interaction has visible feedback and respects reduced-motion |
+
+#### W683 — Audio-reactive motion (strong, capped) (P1)
+| | |
+|---|---|
+| **Status** | done — post-EQ peak → low-passed pulse, ≤2.5 % zoom, no flashing; disabled by reduced-motion/kill switch |
+| **Do** | Tap loudness/bass from the playing audio (GStreamer level/spectrum) to drive backdrop scale/glow on every page. **Hard cap:** few-percent scale, soft glow, ≤ ~3 changes/second, never full-frame flashes; disabled under reduced-motion |
+| **Accept** | Music visibly moves the art without flashing |
+
+#### W684 — Video loop backdrops everywhere with auto-degrade (P1)
+| | |
+|---|---|
+| **Status** | todo |
+| **Do** | Muted looping video wherever a legal source exists (YTM video path, Apple motion art if reachable); pause when unfocused, on battery or when frames drop; fall back to still + drift; never autoplays audio |
+| **Accept** | Video plays on art pages, stops cleanly under strain, resumes automatically |
+
+#### W685 — wgpu canvas host (art layers + transitions) (P0)
+| | |
+|---|---|
+| **Status** | todo |
+| **Today** | `wgpu` is in the lockfile; no canvas in `mde-music`; Vulkan available (Intel HD 620) |
+| **Do** | Time-boxed spike: wgpu renders to a texture shown in a GTK widget (`GtkGLArea` or `gdk::Texture` upload). If it holds 30 fps on this seat, build the canvas for backdrops, parallax and transitions; keep the GTK-only still/crossfade path as the fallback. Native GTK for lists, text, controls |
+| **Accept** | Canvas holds ≥30 fps on this seat; app still shows art if the canvas fails to init |
+
+#### W686 — Infinite artwork wall (P2)
+| | |
+|---|---|
+| **Status** | todo |
+| **Do** | Zoomable, drifting mosaic of covers/portraits on the canvas; click opens the item; lazy tiles from cache |
+| **Accept** | Wall scrolls/zooms smoothly with a large library |
+
+#### W687 — 3D Cover Flow carousel (P2)
+| | |
+|---|---|
+| **Status** | todo |
+| **Do** | Albums on a tilted arc with depth blur on the canvas; flick/arrow keys to browse; click to open |
+| **Accept** | Smooth carousel over the whole album set |
+
+#### W688 — Photo-wall artist grid (P1)
+| | |
+|---|---|
+| **Status** | todo |
+| **Do** | Edge-to-edge artist portrait grid with hover backdrop reveal (shares W665) |
+| **Accept** | Artists view is a wall of photographs |
+
+#### W689 — Phase ship gates (P0)
+| | |
+|---|---|
+| **Status** | todo |
+| **Do** | After each phase (sources → backdrops → motion → canvas): offline tests, screenshots of each affected page, then install to `~/.local/bin` and `/usr/bin` with matching md5 |
+| **Accept** | Four shipped phases with screenshots archived |
+
+#### W690 — Loading transitions while waiting for content (P1)
+| | |
+|---|---|
+| **Status** | done — 2026-11-27: `ui/loading.rs` (spinner row, row/card/page skeletons, `fade_in`); shimmering CSS skeletons on Home, Library, artist/album/playlist fetches (`fetch_then`), Search, charts, Performer; results fade in on arrival; page switches crossfade (280 ms); first backdrop image fades in from dark; artist photos fade in. CSS animations follow GTK reduced-motion. 58 tests pass; installed to both prefixes (md5 02d34a8c…). **todo:** Podcast page + Radio tabs still use text status. **Regression fixed 2026-11-27:** the artist page's nested top-tracks fetch wiped the page with a skeleton (artist e.g. Alcatrazz never finished loading); nested fills now use `fetch_then_inline` (no skeleton) |
+| **Today** | Bare "Loading…" labels in ~12 places |
+| **Accept** | Every wait shows a skeleton or spinner, and new content eases in instead of popping |
+
+---
 
 ## Explicitly out of scope for this worklist
 

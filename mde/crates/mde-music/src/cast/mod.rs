@@ -108,6 +108,130 @@ fn mdns_guess_airplay_chromecast() -> Vec<CastDevice> {
     out
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DlnaEndpoints {
+    pub av_transport: String,
+    pub rendering: Option<String>,
+}
+
+/// Pull AVTransport and RenderingControl URLs out of a device description.
+pub fn parse_dlna_description(xml: &str, page_url: &str) -> DlnaEndpoints {
+    let mut av_transport = None;
+    let mut rendering = None;
+    let lower = xml.to_ascii_lowercase();
+    let mut search_from = 0;
+    while let Some(rel) = lower[search_from..].find("<service>") {
+        let start = search_from + rel;
+        let end = lower[start..]
+            .find("</service>")
+            .map(|n| start + n)
+            .unwrap_or(xml.len());
+        let block = &xml[start..end];
+        let block_l = block.to_ascii_lowercase();
+        let control = element_text(block, "controlurl");
+        if block_l.contains("avtransport") {
+            av_transport = control.clone().or(av_transport);
+        }
+        if block_l.contains("renderingcontrol") {
+            rendering = control.or(rendering);
+        }
+        search_from = end;
+        if search_from >= xml.len() {
+            break;
+        }
+    }
+    DlnaEndpoints {
+        av_transport: av_transport
+            .map(|path| resolve_control_url(page_url, &path))
+            .unwrap_or_else(|| guessed_av(page_url)),
+        rendering: rendering.map(|path| resolve_control_url(page_url, &path)),
+    }
+}
+
+fn element_text(block: &str, tag: &str) -> Option<String> {
+    let lower = block.to_ascii_lowercase();
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let start = lower.find(&open)? + open.len();
+    let end = lower[start..].find(&close)? + start;
+    let text = block[start..end].trim();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text.to_string())
+    }
+}
+
+fn resolve_control_url(page_url: &str, control: &str) -> String {
+    if control.starts_with("http://") || control.starts_with("https://") {
+        return control.to_string();
+    }
+    if let Some(host_end) = page_url.find("://").and_then(|i| {
+        page_url[i + 3..]
+            .find('/')
+            .map(|slash| i + 3 + slash)
+    }) {
+        if control.starts_with('/') {
+            return format!("{}{control}", &page_url[..host_end]);
+        }
+    }
+    format!("{page_url}/{control}")
+}
+
+fn guessed_av(address_or_url: &str) -> String {
+    let host = address_or_url
+        .trim_start_matches("http://")
+        .trim_start_matches("https://")
+        .split('/')
+        .next()
+        .unwrap_or(address_or_url);
+    let host = host.split(':').next().unwrap_or(host);
+    format!("http://{host}:1400/AVTransport/Control")
+}
+
+pub fn transport_state(xml: &str) -> Option<String> {
+    element_text(xml, "currenttransportstate")
+}
+
+fn dlna_endpoints(device: &CastDevice) -> Result<DlnaEndpoints> {
+    let Some(location) = device.control_url.clone() else {
+        return Ok(DlnaEndpoints {
+            av_transport: guessed_av(&device.address),
+            rendering: None,
+        });
+    };
+    if location.to_ascii_lowercase().contains("avtransport") {
+        let rendering = location.replacen("AVTransport", "RenderingControl", 1);
+        return Ok(DlnaEndpoints {
+            av_transport: location,
+            rendering: Some(rendering),
+        });
+    }
+    let body = ureq::get(&location)
+        .call()
+        .context("DLNA description")?
+        .into_string()
+        .context("DLNA description body")?;
+    Ok(parse_dlna_description(&body, &location))
+}
+
+fn soap_call(url: &str, action: &str, inner: &str) -> Result<String> {
+    let soap = format!(
+        r#"<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+{inner}
+</s:Body>
+</s:Envelope>"#
+    );
+    let resp = ureq::post(url)
+        .set("Content-Type", "text/xml; charset=\"utf-8\"")
+        .set("SOAPACTION", &format!("\"{action}\""))
+        .send_string(&soap)
+        .with_context(|| format!("{action} failed"))?;
+    resp.into_string().context("SOAP body")
+}
+
 /// Start playback of `stream_url` on the selected device.
 pub fn cast_url(device: &CastDevice, stream_url: &str, title: &str) -> Result<()> {
     match device.protocol {
@@ -117,18 +241,105 @@ pub fn cast_url(device: &CastDevice, stream_url: &str, title: &str) -> Result<()
     }
 }
 
+/// Stop the receiver. DLNA sends Stop. Chromecast and AirPlay report the receiver's answer.
+pub fn cast_stop(device: &CastDevice) -> Result<()> {
+    match device.protocol {
+        CastProtocol::Dlna => {
+            let ends = dlna_endpoints(device)?;
+            let inner = r#"<u:Stop xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:Stop>"#;
+            soap_call(
+                &ends.av_transport,
+                "urn:schemas-upnp-org:service:AVTransport:1#Stop",
+                inner,
+            )?;
+            Ok(())
+        }
+        CastProtocol::Chromecast => {
+            anyhow::bail!("Chromecast stop is not available on the HTTP load path")
+        }
+        CastProtocol::AirPlay => {
+            let url = format!("http://{}:7000/stop", device.address);
+            ureq::post(&url)
+                .send_string("")
+                .context("AirPlay stop")?;
+            Ok(())
+        }
+    }
+}
+
+/// `volume` is 0–100. DLNA uses RenderingControl. The other protocols say when they cannot.
+pub fn cast_volume(device: &CastDevice, volume: u8) -> Result<()> {
+    let volume = volume.min(100);
+    match device.protocol {
+        CastProtocol::Dlna => {
+            let ends = dlna_endpoints(device)?;
+            let rendering = ends.rendering.context(
+                "DLNA description has no RenderingControl URL, so volume cannot be set",
+            )?;
+            let inner = format!(
+                r#"<u:SetVolume xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1"><InstanceID>0</InstanceID><Channel>Master</Channel><DesiredVolume>{volume}</DesiredVolume></u:SetVolume>"#
+            );
+            soap_call(
+                &rendering,
+                "urn:schemas-upnp-org:service:RenderingControl:1#SetVolume",
+                &inner,
+            )?;
+            Ok(())
+        }
+        CastProtocol::Chromecast => {
+            anyhow::bail!("Chromecast volume is not available on the HTTP load path")
+        }
+        CastProtocol::AirPlay => {
+            let url = format!("http://{}:7000/volume", device.address);
+            let body = format!("volume: {:.2}\r\n", (volume as f32 / 100.0) - 1.0);
+            ureq::post(&url)
+                .set("Content-Type", "text/parameters")
+                .send_string(&body)
+                .context("AirPlay volume")?;
+            Ok(())
+        }
+    }
+}
+
+/// Short status line for the picker. Failures stay as errors.
+pub fn cast_status(device: &CastDevice) -> Result<String> {
+    match device.protocol {
+        CastProtocol::Dlna => {
+            let ends = dlna_endpoints(device)?;
+            let inner = r#"<u:GetTransportInfo xmlns:u="urn:schemas-upnp-org:service:AVTransport:1"><InstanceID>0</InstanceID></u:GetTransportInfo>"#;
+            let xml = soap_call(
+                &ends.av_transport,
+                "urn:schemas-upnp-org:service:AVTransport:1#GetTransportInfo",
+                inner,
+            )?;
+            Ok(transport_state(&xml).unwrap_or_else(|| "DLNA answered".into()))
+        }
+        CastProtocol::Chromecast => {
+            let url = format!("http://{}:8008/setup/eureka_info", device.address);
+            let text = ureq::get(&url)
+                .call()
+                .context("Chromecast status")?
+                .into_string()
+                .unwrap_or_default();
+            let name = serde_json::from_str::<serde_json::Value>(&text)
+                .ok()
+                .and_then(|v| v.get("name").and_then(|n| n.as_str()).map(str::to_string));
+            Ok(match name {
+                Some(name) => format!("Chromecast reachable ({name})"),
+                None => "Chromecast reachable".into(),
+            })
+        }
+        CastProtocol::AirPlay => {
+            let url = format!("http://{}:7000/server-info", device.address);
+            ureq::get(&url).call().context("AirPlay status")?;
+            Ok("AirPlay reachable".into())
+        }
+    }
+}
+
 fn cast_dlna(device: &CastDevice, stream_url: &str, title: &str) -> Result<()> {
-    let control = device
-        .control_url
-        .clone()
-        .context("DLNA device missing control URL")?;
-    // Resolve AVTransport control if location is device description
-    let av_url = if control.contains("AVTransport") {
-        control
-    } else {
-        // Common pattern: post SOAP to derived control URL
-        format!("http://{}:1400/AVTransport/Control", device.address)
-    };
+    let ends = dlna_endpoints(device)?;
+    let av_url = ends.av_transport;
     let meta = format!(
         r#"&lt;DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"&gt;&lt;item&gt;&lt;dc:title&gt;{title}&lt;/dc:title&gt;&lt;upnp:class&gt;object.item.audioItem.musicTrack&lt;/upnp:class&gt;&lt;res&gt;{stream_url}&lt;/res&gt;&lt;/item&gt;&lt;/DIDL-Lite&gt;"#
     );
@@ -218,5 +429,36 @@ fn cast_airplay(device: &CastDevice, stream_url: &str, title: &str) -> Result<()
             let _ = device;
             anyhow::bail!("AirPlay receiver did not accept HTTP play; ensure AirPlay audio is enabled")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn description_yields_av_and_volume_urls() {
+        let xml = r#"<root><service>
+            <serviceType>urn:schemas-upnp-org:service:AVTransport:1</serviceType>
+            <controlURL>/upnp/control/AVTransport1</controlURL>
+            </service><service>
+            <serviceType>urn:schemas-upnp-org:service:RenderingControl:1</serviceType>
+            <controlURL>/upnp/control/RenderingControl1</controlURL>
+            </service></root>"#;
+        let ends = parse_dlna_description(xml, "http://192.168.1.20:1400/xml/device.xml");
+        assert_eq!(
+            ends.av_transport,
+            "http://192.168.1.20:1400/upnp/control/AVTransport1"
+        );
+        assert_eq!(
+            ends.rendering.as_deref(),
+            Some("http://192.168.1.20:1400/upnp/control/RenderingControl1")
+        );
+    }
+
+    #[test]
+    fn transport_state_is_read_from_soap() {
+        let xml = "<CurrentTransportState>PLAYING</CurrentTransportState>";
+        assert_eq!(transport_state(xml).as_deref(), Some("PLAYING"));
     }
 }

@@ -14,6 +14,15 @@ fn json_vec(value: Option<&Value>) -> Vec<Value> {
     }
 }
 
+fn json_id_value(value: Option<&Value>) -> Option<String> {
+    value.and_then(|v| {
+        v.as_str()
+            .map(|s| s.to_string())
+            .or_else(|| v.as_i64().map(|n| n.to_string()))
+            .or_else(|| v.as_u64().map(|n| n.to_string()))
+    })
+}
+
 /// Prefer modern OpenSubsonic, then fall back until the server accepts `v=`.
 /// Error 30 = "Server must upgrade" → our advertised version is too new.
 const API_VERSION_CANDIDATES: &[&str] = &[
@@ -55,6 +64,23 @@ impl SubsonicBackend {
         };
         be.negotiate()?;
         Ok(be)
+    }
+
+    /// `getTopSongs` wants an artist name. Resolve an id when possible.
+    fn artist_display_name(&self, artist_id: &str) -> Option<String> {
+        if !artist_id.chars().any(|c| c.is_ascii_digit()) && artist_id.contains(' ') {
+            return Some(artist_id.to_string());
+        }
+        let v = self
+            .get(
+                "getArtist.view",
+                &format!("id={}", urlencoding::encode(artist_id)),
+            )
+            .ok()?;
+        v.pointer("/subsonic-response/artist/name")
+            .and_then(|x| x.as_str())
+            .map(str::to_string)
+            .filter(|s| !s.is_empty())
     }
 
     /// Pick an API version + auth mode the server accepts.
@@ -523,12 +549,11 @@ impl MediaBackend for SubsonicBackend {
 
     fn top_tracks(&self, artist_id: Option<&str>) -> Result<Vec<Track>> {
         if let Some(aid) = artist_id {
+            let name = self.artist_display_name(aid).unwrap_or_else(|| aid.to_string());
             let v = self.get(
                 "getTopSongs.view",
-                &format!("artist={}&count=50", urlencoding::encode(aid)),
+                &format!("artist={}&count=50", urlencoding::encode(&name)),
             )?;
-            // getTopSongs wants artist name; try getArtist first
-            let _ = aid;
             let arr = json_vec(v.pointer("/subsonic-response/topSongs/song"));
             if !arr.is_empty() {
                 return Ok(arr.iter().map(|t| self.parse_track(t)).collect());
@@ -627,25 +652,51 @@ impl MediaBackend for SubsonicBackend {
         let channels = json_vec(v.pointer("/subsonic-response/podcasts/channel"));
         let mut eps = Vec::new();
         for ch in channels {
+            let ch_id = json_id_value(ch.get("id")).unwrap_or_default();
+            if !ch_id.is_empty() && ch_id != podcast_id {
+                continue;
+            }
             for e in json_vec(ch.get("episode")) {
-                    let id = e.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let stream = e
-                        .get("streamId")
+                let id = json_id_value(e.get("id")).unwrap_or_default();
+                if id.is_empty() {
+                    continue;
+                }
+                let status = e
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
+                // Prefer downloaded media; skip error/skipped shells without a stream.
+                let stream_id = json_id_value(e.get("streamId"));
+                let stream = if let Some(sid) = stream_id {
+                    self.stream(&sid, None)
+                } else if status == "completed" || status == "downloading" {
+                    self.stream(&id, None)
+                } else {
+                    // Undownloaded — no playable server stream yet.
+                    String::new()
+                };
+                if !stream.contains("://") {
+                    continue;
+                }
+                eps.push(PodcastEpisode {
+                    title: e.get("title").and_then(|v| v.as_str()).unwrap_or("").into(),
+                    podcast_id: podcast_id.into(),
+                    duration_secs: e
+                        .get("duration")
+                        .and_then(|v| v.as_u64())
+                        .or_else(|| e.get("duration").and_then(|v| v.as_i64()).map(|n| n as u64)),
+                    stream_url: stream,
+                    cover_url: {
+                        let art = json_id_value(e.get("coverArt")).unwrap_or_default();
+                        self.cover(&art)
+                    },
+                    published: e
+                        .get("publishDate")
                         .and_then(|v| v.as_str())
-                        .map(|sid| self.stream(sid, None))
-                        .unwrap_or_else(|| self.stream(&id, None));
-                    eps.push(PodcastEpisode {
-                        title: e.get("title").and_then(|v| v.as_str()).unwrap_or("").into(),
-                        podcast_id: podcast_id.into(),
-                        duration_secs: e.get("duration").and_then(|v| v.as_u64()),
-                        stream_url: stream,
-                        cover_url: self.cover(e.get("coverArt").and_then(|v| v.as_str()).unwrap_or("")),
-                        published: e
-                            .get("publishDate")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string()),
-                        id,
-                    });
+                        .map(|s| s.to_string()),
+                    id,
+                });
             }
         }
         Ok(eps)
@@ -660,16 +711,25 @@ impl MediaBackend for SubsonicBackend {
             "createPodcastChannel.view",
             &format!("url={}", urlencoding::encode(url)),
         ) {
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                let _ = self.refresh_podcasts();
+                Ok(())
+            }
             Err(err) => {
                 let msg = err.to_string().to_ascii_lowercase();
                 if msg.contains("exist") || msg.contains("already") {
+                    let _ = self.refresh_podcasts();
                     Ok(())
                 } else {
                     Err(err)
                 }
             }
         }
+    }
+
+    fn refresh_podcasts(&self) -> Result<()> {
+        self.get("refreshPodcasts.view", "")?;
+        Ok(())
     }
 
     fn radio_stations(&self) -> Result<Vec<RadioStation>> {
@@ -700,25 +760,60 @@ impl MediaBackend for SubsonicBackend {
         let url = match mode {
             TranscodeMode::Direct => self.stream(&track.id, None),
             TranscodeMode::Auto => {
-                // Prefer original; server may still remux
-                track.stream_url.clone()
+                // Prefer a known stream URL; fall back to Direct when history/resume
+                // only has a track id (empty stream_url).
+                if track.stream_url.contains("://") {
+                    track.stream_url.clone()
+                } else {
+                    self.stream(&track.id, None)
+                }
             }
             TranscodeMode::Transcode => self.stream(&track.id, Some(192)),
         };
         Ok(url)
     }
 
+    fn item_cover_url(&self, item_id: &str) -> Option<String> {
+        self.cover(item_id)
+    }
+
     fn lyrics(&self, track_id: &str) -> Result<Option<String>> {
-        let v = match self.get("getLyrics.view", &format!("id={}", urlencoding::encode(track_id)))
+        if let Ok(v) = self.get("getLyrics.view", &format!("id={}", urlencoding::encode(track_id)))
         {
-            Ok(v) => v,
-            Err(_) => {
-                // older API uses artist+title; skip
-                return Ok(None);
+            if let Some(text) = v
+                .pointer("/subsonic-response/lyrics/value")
+                .and_then(|x| x.as_str())
+                .filter(|s| !s.trim().is_empty())
+            {
+                return Ok(Some(text.to_string()));
             }
-        };
+        }
+        // Older servers only accept artist + title.
+        let song = self
+            .get("getSong.view", &format!("id={}", urlencoding::encode(track_id)))
+            .ok();
+        let artist = song
+            .as_ref()
+            .and_then(|v| v.pointer("/subsonic-response/song/artist").and_then(|x| x.as_str()))
+            .unwrap_or("");
+        let title = song
+            .as_ref()
+            .and_then(|v| v.pointer("/subsonic-response/song/title").and_then(|x| x.as_str()))
+            .unwrap_or("");
+        if artist.is_empty() || title.is_empty() {
+            return Ok(None);
+        }
+        let v = self.get(
+            "getLyrics.view",
+            &format!(
+                "artist={}&title={}",
+                urlencoding::encode(artist),
+                urlencoding::encode(title)
+            ),
+        )?;
         Ok(v.pointer("/subsonic-response/lyrics/value")
             .and_then(|x| x.as_str())
+            .filter(|s| !s.trim().is_empty())
             .map(|s| s.to_string()))
     }
 

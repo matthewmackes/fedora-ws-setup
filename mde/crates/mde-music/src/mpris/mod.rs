@@ -3,11 +3,37 @@
 use crate::model::Track;
 use crate::player::Player;
 use anyhow::Result;
+use parking_lot::Mutex;
 use std::collections::HashMap;
+use std::sync::OnceLock;
 use zbus::{connection::Builder, interface, object_server::SignalEmitter, Connection};
 
+enum Notice {
+    Seeked(i64),
+    Changed,
+}
+
+fn notice_slot() -> &'static Mutex<Vec<Notice>> {
+    static SLOT: OnceLock<Mutex<Vec<Notice>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Position in microseconds. Desktop shells use the Seeked signal, not a Position property change.
+pub fn note_seek_us(position_us: i64) {
+    notice_slot().lock().push(Notice::Seeked(position_us.max(0)));
+}
+
+/// PlaybackStatus and Metadata changed (track, play, pause, stop).
+pub fn note_changed() {
+    notice_slot().lock().push(Notice::Changed);
+}
+
+fn drain_notices() -> Vec<Notice> {
+    std::mem::take(&mut *notice_slot().lock())
+}
+
 pub struct MprisHub {
-    _conn: Connection,
+    conn: Connection,
 }
 
 struct Root;
@@ -45,17 +71,21 @@ impl Root {
     fn supported_mime_types(&self) -> Vec<String> {
         vec!["audio/mpeg".into(), "audio/flac".into(), "audio/ogg".into()]
     }
-    fn raise(&self) {}
-    fn quit(&self) {}
+    fn raise(&self) {
+        crate::player::request_window(crate::player::WindowRequest::Raise);
+    }
+    fn quit(&self) {
+        crate::player::request_window(crate::player::WindowRequest::Quit);
+    }
 }
 
 #[interface(name = "org.mpris.MediaPlayer2.Player")]
 impl PlayerIface {
     fn next(&self) {
-        let _ = self.player.advance();
+        crate::player::request_skip(crate::player::SkipRequest::Next);
     }
     fn previous(&self) {
-        let _ = self.player.previous_track();
+        crate::player::request_skip(crate::player::SkipRequest::Previous);
     }
     fn pause(&self) {
         let _ = self.player.pause();
@@ -201,20 +231,66 @@ pub async fn start(player: Player) -> Result<MprisHub> {
         .serve_at("/org/mpris/MediaPlayer2", iface)?
         .build()
         .await?;
-    Ok(MprisHub { _conn: conn })
+    Ok(MprisHub { conn })
+}
+
+async fn publish(conn: &Connection) {
+    let batch = drain_notices();
+    if batch.is_empty() {
+        return;
+    }
+    let Ok(iface_ref) = conn
+        .object_server()
+        .interface::<_, PlayerIface>("/org/mpris/MediaPlayer2")
+        .await
+    else {
+        return;
+    };
+    let emitter = iface_ref.signal_emitter().clone();
+    for notice in batch {
+        match notice {
+            Notice::Seeked(pos) => {
+                if let Err(err) = PlayerIface::seeked(&emitter, pos).await {
+                    tracing::debug!(%err, "mpris Seeked");
+                }
+            }
+            Notice::Changed => {
+                let iface = iface_ref.get().await;
+                if let Err(err) = iface.playback_status_changed(&emitter).await {
+                    tracing::debug!(%err, "mpris PlaybackStatus");
+                }
+                if let Err(err) = iface.metadata_changed(&emitter).await {
+                    tracing::debug!(%err, "mpris Metadata");
+                }
+            }
+        }
+    }
 }
 
 pub fn spawn(player: Player) {
     std::thread::spawn(move || {
-        let rt = tokio::runtime::Builder::new_current_thread()
+        let rt = match tokio::runtime::Builder::new_current_thread()
             .enable_all()
-            .build();
-        if let Ok(rt) = rt {
-            let _ = rt.block_on(start(player));
-            // Keep the connection alive
-            loop {
-                std::thread::sleep(std::time::Duration::from_secs(3600));
+            .build()
+        {
+            Ok(rt) => rt,
+            Err(err) => {
+                tracing::warn!(%err, "mpris runtime");
+                return;
             }
-        }
+        };
+        rt.block_on(async move {
+            let hub = match start(player).await {
+                Ok(hub) => hub,
+                Err(err) => {
+                    tracing::warn!(%err, "mpris start");
+                    return;
+                }
+            };
+            loop {
+                publish(&hub.conn).await;
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
+        });
     });
 }

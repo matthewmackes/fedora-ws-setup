@@ -17,7 +17,9 @@ pub struct ControlState {
 
 pub fn spawn(state: ControlState, port: u16) {
     thread::spawn(move || {
-        let bind = format!("0.0.0.0:{port}");
+        // Default localhost. Set NM_CONTROL_BIND=0.0.0.0 to opt into LAN (still unauthenticated).
+        let host = std::env::var("NM_CONTROL_BIND").unwrap_or_else(|_| "127.0.0.1".into());
+        let bind = format!("{host}:{port}");
         let listener = match TcpListener::bind(&bind) {
             Ok(l) => l,
             Err(e) => {
@@ -25,7 +27,7 @@ pub fn spawn(state: ControlState, port: u16) {
                 return;
             }
         };
-        tracing::info!("Neighbourhood Music control API on http://0.0.0.0:{port}");
+        tracing::info!("Neighbourhood Music control API on http://{bind}");
         for stream in listener.incoming().flatten() {
             let st = state.clone();
             thread::spawn(move || {
@@ -71,11 +73,11 @@ fn handle(mut stream: TcpStream, state: ControlState) -> Result<()> {
             (200, format!("{{\"playing\":{playing}}}"), "application/json")
         }
         ("POST", "/next") | ("POST", "/api/next") => {
-            let _ = state.player.advance();
+            crate::player::request_skip(crate::player::SkipRequest::Next);
             (200, "{\"ok\":true}".into(), "application/json")
         }
         ("POST", "/previous") | ("POST", "/api/previous") => {
-            let _ = state.player.previous_track();
+            crate::player::request_skip(crate::player::SkipRequest::Previous);
             (200, "{\"ok\":true}".into(), "application/json")
         }
         ("GET", "/") => (

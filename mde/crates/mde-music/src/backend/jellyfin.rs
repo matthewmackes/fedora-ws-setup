@@ -180,7 +180,10 @@ impl JellyfinBackend {
                 .pointer("/MediaSources/0/Bitrate")
                 .and_then(|v| v.as_u64())
                 .map(|n| (n / 1000) as u32),
-            sample_rate: None,
+            sample_rate: it
+                .pointer("/MediaStreams/0/SampleRate")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as u32),
             format: it
                 .pointer("/MediaSources/0/Container")
                 .and_then(|v| v.as_str())
@@ -644,6 +647,34 @@ impl MediaBackend for JellyfinBackend {
             .collect())
     }
 
+    fn refresh_podcasts(&self) -> Result<()> {
+        let mut refreshed = 0u32;
+        if let Ok(views) = self.get(&format!("/Users/{}/Views", self.user_id)) {
+            if let Some(arr) = views.get("Items").and_then(|items| items.as_array()) {
+                for view in arr {
+                    let kind = view
+                        .get("CollectionType")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    if kind != "podcasts" {
+                        continue;
+                    }
+                    let Some(id) = view.get("Id").and_then(|value| value.as_str()) else {
+                        continue;
+                    };
+                    self.post_empty(&format!(
+                        "/Items/{id}/Refresh?Recursive=true&MetadataRefreshMode=Default"
+                    ))?;
+                    refreshed += 1;
+                }
+            }
+        }
+        if refreshed == 0 {
+            self.post_empty("/Library/Refresh")?;
+        }
+        Ok(())
+    }
+
     fn radio_stations(&self) -> Result<Vec<RadioStation>> {
         // Live TV channels marked as radio, or internet radio items
         let mut out = Vec::new();
@@ -677,9 +708,19 @@ impl MediaBackend for JellyfinBackend {
     fn stream_url(&self, track: &Track, mode: TranscodeMode) -> Result<String> {
         Ok(match mode {
             TranscodeMode::Direct => self.stream_direct(&track.id),
-            TranscodeMode::Auto => track.stream_url.clone(),
+            TranscodeMode::Auto => {
+                if track.stream_url.contains("://") {
+                    track.stream_url.clone()
+                } else {
+                    self.stream_direct(&track.id)
+                }
+            }
             TranscodeMode::Transcode => self.stream_transcode(&track.id),
         })
+    }
+
+    fn item_cover_url(&self, item_id: &str) -> Option<String> {
+        self.cover(item_id)
     }
 
     fn lyrics(&self, track_id: &str) -> Result<Option<String>> {

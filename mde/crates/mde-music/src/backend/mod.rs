@@ -39,9 +39,17 @@ pub trait MediaBackend: Send + Sync {
     fn subscribe_podcast(&self, _feed_url: &str) -> Result<()> {
         anyhow::bail!("this server cannot subscribe to podcasts")
     }
+    /// Ask the server to refresh subscribed podcast feeds / episode lists.
+    fn refresh_podcasts(&self) -> Result<()> {
+        Ok(())
+    }
     fn radio_stations(&self) -> Result<Vec<RadioStation>>;
 
     fn stream_url(&self, track: &Track, mode: TranscodeMode) -> Result<String>;
+    /// Cover art URL for a catalog id (track/album/artist) when known.
+    fn item_cover_url(&self, _item_id: &str) -> Option<String> {
+        None
+    }
     fn lyrics(&self, track_id: &str) -> Result<Option<String>>;
     fn scrobble(&self, track_id: &str, submission: bool) -> Result<()>;
     fn set_favorite(&self, track_id: &str, liked: bool) -> Result<()>;

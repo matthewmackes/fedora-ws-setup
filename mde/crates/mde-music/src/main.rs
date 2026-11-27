@@ -1,4 +1,6 @@
 mod acquire;
+mod eq;
+mod artimg;
 mod artwork;
 mod backend;
 mod cache;
@@ -7,6 +9,7 @@ mod control;
 mod history;
 mod model;
 mod mpris;
+mod performer;
 mod places;
 mod player;
 mod podcasts;

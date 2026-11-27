@@ -67,7 +67,7 @@ impl Clone for InnertubeClient {
 }
 
 impl InnertubeClient {
-    pub fn load_repair_overrides(&mut self) {
+    pub fn load_repair_overrides(&self) {
         if let Some(pack) = repair::load_active_rules() {
             let mut clients = self.clients.lock().unwrap();
             if !pack.clients.is_empty() {
@@ -100,8 +100,22 @@ impl InnertubeClient {
         clients[idx % clients.len()].clone()
     }
 
-    fn context(&self) -> Value {
-        let c = self.current();
+    /// Search / browse / next responses are parsed as WEB_REMIX shapes. Other
+    /// identities (ANDROID_MUSIC, IOS) answer with different layouts that yield
+    /// zero hits, so rotation only applies to the `player` (stream) endpoint.
+    fn client_for(&self, endpoint: &str) -> ClientIdentity {
+        if endpoint != "player" {
+            let clients = self.clients.lock().unwrap();
+            if let Some(web) = clients.iter().find(|c| c.client_name == "WEB_REMIX") {
+                return web.clone();
+            }
+            drop(clients);
+            return builtin_clients().remove(0);
+        }
+        self.current()
+    }
+
+    fn context_for(c: &ClientIdentity) -> Value {
         json!({
             "client": {
                 "clientName": c.client_name,
@@ -114,11 +128,11 @@ impl InnertubeClient {
     }
 
     fn post(&self, endpoint: &str, body: Value) -> Result<Value> {
-        let c = self.current();
+        let c = self.client_for(endpoint);
         let url = format!("{INNERTUBE_BASE}/{endpoint}?prettyPrint=false&key={}", c.api_key);
         let mut payload = body;
         if let Some(obj) = payload.as_object_mut() {
-            obj.insert("context".into(), self.context());
+            obj.insert("context".into(), Self::context_for(&c));
         }
         let resp = ureq::post(&url)
             .set("User-Agent", USER_AGENT)
@@ -135,7 +149,7 @@ impl InnertubeClient {
     pub fn search(&self, query: &str) -> Result<SearchResults> {
         let body = json!({
             "query": query,
-            "params": "EgWKAQIIAWoKEAMQBBAJEAoQBQ%3D%3D"
+            "params": "EgWKAQIIAWoKEAMQBBAJEAoQBQ=="
         });
         let v = self.post("search", body)?;
         Ok(parse_search(&v))
@@ -143,23 +157,19 @@ impl InnertubeClient {
 
     pub fn home_shelves(&self) -> Result<Vec<HomeShelf>> {
         let v = self.post("browse", json!({ "browseId": "FEmusic_home" }))?;
-        let mut shelves = parse_shelves(&v, "Home");
-        shelves.extend(self.charts_and_moods().unwrap_or_default());
-        Ok(shelves)
+        Ok(parse_shelves(&v, "Home"))
     }
 
     pub fn charts_and_moods(&self) -> Result<Vec<HomeShelf>> {
         let charts = self
             .post("browse", json!({ "browseId": "FEmusic_charts" }))
             .map(|v| parse_shelves(&v, "Charts"))
-            .unwrap_or_default();
+            .map_err(|err| format!("{err:#}"));
         let moods = self
             .post("browse", json!({ "browseId": "FEmusic_moods_and_genres" }))
             .map(|v| parse_shelves(&v, "Moods & genres"))
-            .unwrap_or_default();
-        let mut out = charts;
-        out.extend(moods);
-        Ok(out)
+            .map_err(|err| format!("{err:#}"));
+        merge_chart_results(charts, moods).map_err(|err| anyhow::anyhow!(err))
     }
 
     pub fn album_tracks(&self, browse_id: &str) -> Result<Vec<Track>> {
@@ -197,6 +207,23 @@ impl InnertubeClient {
             }),
         )?;
         parse_player_stream(&v, id)
+    }
+}
+
+/// Charts and moods are separate browses. One failure still returns the other.
+/// Both failing is an error so the UI can say so instead of showing a blank shelf.
+pub fn merge_chart_results(
+    charts: Result<Vec<HomeShelf>, String>,
+    moods: Result<Vec<HomeShelf>, String>,
+) -> Result<Vec<HomeShelf>, String> {
+    match (charts, moods) {
+        (Err(charts), Err(moods)) => Err(format!("charts: {charts}; moods: {moods}")),
+        (Ok(charts), Err(_)) => Ok(charts),
+        (Err(_), Ok(moods)) => Ok(moods),
+        (Ok(mut charts), Ok(moods)) => {
+            charts.extend(moods);
+            Ok(charts)
+        }
     }
 }
 
@@ -512,5 +539,55 @@ fn parse_player_stream(v: &Value, video_id: &str) -> Result<ResolvedStream> {
         format: Some(format),
         sample_rate,
         video_url,
+        needs_android_ua: false,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::merge_chart_results;
+    use crate::model::HomeShelf;
+
+    fn shelf(title: &str) -> HomeShelf {
+        HomeShelf {
+            title: title.into(),
+            ..HomeShelf::default()
+        }
+    }
+
+    #[test]
+    fn charts_keep_the_browse_that_worked() {
+        let both = merge_chart_results(Err("down".into()), Err("down".into()));
+        assert!(both.is_err());
+        let charts = merge_chart_results(Ok(vec![shelf("Charts")]), Err("down".into())).unwrap();
+        assert_eq!(charts.len(), 1);
+        let both_ok = merge_chart_results(Ok(vec![shelf("Charts")]), Ok(vec![shelf("Moods")])).unwrap();
+        assert_eq!(both_ok.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod live_sample_tests {
+    #[test]
+    fn parses_sample_if_present() {
+        let Ok(s) = std::fs::read_to_string("/tmp/ytm_sample.json") else { return };
+        let v: serde_json::Value = serde_json::from_str(&s).unwrap();
+        let r = super::parse_search(&v);
+        eprintln!("tracks={} albums={} artists={}", r.tracks.len(), r.albums.len(), r.artists.len());
+        assert!(!r.tracks.is_empty() || !r.albums.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod client_selection_tests {
+    use super::*;
+    #[test]
+    fn search_ignores_rotated_android_identity() {
+        let c = InnertubeClient::default();
+        *c.clients.lock().unwrap() = builtin_clients().into_iter().rev().collect();
+        *c.index.lock().unwrap() = 0;
+        assert_eq!(c.client_for("search").client_name, "WEB_REMIX");
+        assert_eq!(c.client_for("browse").client_name, "WEB_REMIX");
+        assert_ne!(c.client_for("player").client_name, "WEB_REMIX");
+    }
 }

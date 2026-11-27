@@ -201,13 +201,19 @@ pub fn search(query: &str) -> Result<Vec<Show>> {
     Ok(shows)
 }
 
+/// Max episodes kept after a feed parse (newest first). Huge shows like The Daily
+/// publish multi‑MB feeds; we only need a recent window for browsing.
+pub const FEED_EPISODE_CAP: usize = 200;
+
 pub fn episodes_for_feed(show: &Show) -> Result<Vec<Episode>> {
     let feed = show.feed_url.trim();
     if !feed.contains("://") {
         bail!("this show has no podcast feed");
     }
-    let bytes = http_bytes(feed, 2_000_000)?;
-    let channel = rss::Channel::read_from(Cursor::new(bytes)).context("read podcast feed")?;
+    // The Daily et al. ship 10–20 MB feeds. Read enough for recent items, then
+    // truncate on a complete </item> so the XML still parses.
+    let bytes = http_feed_bytes(feed, 8_000_000)?;
+    let channel = rss::Channel::read_from(Cursor::new(&bytes)).context("read podcast feed")?;
     let show_art = channel
         .itunes_ext()
         .and_then(|ext| ext.image())
@@ -253,9 +259,33 @@ pub fn episodes_for_feed(show: &Show) -> Result<Vec<Episode>> {
             published: item.pub_date().map(|s| s.to_string()),
             duration_secs: duration,
         });
+        if episodes.len() >= FEED_EPISODE_CAP * 2 {
+            // RSS order is usually newest-first; stop early on huge feeds.
+            break;
+        }
     }
     sort_newest(&mut episodes);
+    episodes.truncate(FEED_EPISODE_CAP);
     Ok(episodes)
+}
+
+/// Merge server-downloaded episodes with the live RSS window (prefer server streams).
+pub fn merge_episode_lists(server: Vec<Episode>, feed: Vec<Episode>) -> Vec<Episode> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for ep in server.into_iter().chain(feed) {
+        let key = ep
+            .title
+            .trim()
+            .to_ascii_lowercase();
+        if key.is_empty() || !seen.insert(key) {
+            continue;
+        }
+        out.push(ep);
+    }
+    sort_newest(&mut out);
+    out.truncate(FEED_EPISODE_CAP);
+    out
 }
 
 pub fn sort_newest(episodes: &mut [Episode]) {
@@ -661,6 +691,39 @@ fn http_bytes(url: &str, limit: u64) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
     resp.into_reader().take(limit).read_to_end(&mut bytes)?;
     Ok(bytes)
+}
+
+/// Fetch a podcast feed and, if truncated by `limit`, cut on the last complete
+/// `</item>` and close the RSS document so the XML parser still succeeds.
+fn http_feed_bytes(url: &str, limit: u64) -> Result<Vec<u8>> {
+    let mut bytes = http_bytes(url, limit)?;
+    if (bytes.len() as u64) < limit {
+        return Ok(bytes);
+    }
+    let needle = b"</item>";
+    if let Some(pos) = bytes
+        .windows(needle.len())
+        .rposition(|w| w == needle)
+        .map(|p| p + needle.len())
+    {
+        bytes.truncate(pos);
+        if !bytes.windows(b"</channel>".len()).any(|w| w == b"</channel>") {
+            bytes.extend_from_slice(b"</channel>");
+        }
+        if !bytes.windows(b"</rss>".len()).any(|w| w == b"</rss>") {
+            bytes.extend_from_slice(b"</rss>");
+        }
+        tracing::info!(
+            %url,
+            bytes = bytes.len(),
+            "truncated oversized podcast feed at last </item>"
+        );
+        return Ok(bytes);
+    }
+    bail!(
+        "podcast feed is larger than {} bytes and could not be truncated safely",
+        limit
+    );
 }
 
 fn json_id(value: &Value) -> Option<String> {

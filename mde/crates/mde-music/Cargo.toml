@@ -2,7 +2,7 @@
 name = "mde-music"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license = "AGPL-3.0-or-later"
 description = "Neighbourhood Music — network music client for Jellyfin, Subsonic, and YouTube Music"
 authors.workspace = true
 
@@ -17,10 +17,13 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 dirs = { workspace = true }
 gtk4 = { version = "0.9", features = ["v4_14"] }
+gl = "0.14"
 glib = "0.20"
 gio = "0.20"
 gstreamer = "0.23"
+gstreamer-base = "0.23"
 gstreamer-audio = "0.23"
+cairo-rs = { version = "0.20", features = ["use_glib"] }
 ureq = { version = "2", features = ["json"] }
 url = "2"
 urlencoding = "2"
@@ -41,6 +44,7 @@ hostname = "0.4"
 bytes = "1"
 parking_lot = "0.12"
 once_cell = "1"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 
 [dev-dependencies]
 tempfile = "3"

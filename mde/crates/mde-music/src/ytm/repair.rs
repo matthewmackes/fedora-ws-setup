@@ -122,18 +122,34 @@ fn snapshot_good() {
     }
 }
 
-fn rollback_good() -> Result<()> {
+fn rollback_good() -> Result<bool> {
+    let mut restored = false;
     if rules_good_path().exists() {
         fs::copy(rules_good_path(), rules_path())?;
+        restored = true;
     }
     if ytdlp_good_path().exists() {
         fs::copy(ytdlp_good_path(), ytdlp_path())?;
+        restored = true;
     }
-    Ok(())
+    Ok(restored)
 }
 
-fn fetch_fixpack_rules() -> Result<RepairRules> {
-    let mut rules = load_active_rules().unwrap_or_else(|| RepairRules {
+/// Move the active client to the end. The new first client is the one playback will use.
+pub fn rotate_rules(rules: &mut RepairRules) -> String {
+    if rules.clients.is_empty() {
+        return "none".into();
+    }
+    if rules.clients.len() == 1 {
+        return rules.clients[0].name.clone();
+    }
+    let previous = rules.clients.remove(0);
+    rules.clients.push(previous);
+    rules.clients[0].name.clone()
+}
+
+fn bootstrap_rules() -> RepairRules {
+    RepairRules {
         version: 1,
         clients: vec![
             ClientRule {
@@ -150,7 +166,35 @@ fn fetch_fixpack_rules() -> Result<RepairRules> {
             },
         ],
         notes: "bootstrap".into(),
-    });
+    }
+}
+
+fn rotate_saved_clients() -> Result<String> {
+    let mut rules = load_active_rules().unwrap_or_else(bootstrap_rules);
+    let active = rotate_rules(&mut rules);
+    rules.notes = format!("active client {active}");
+    fs::write(rules_path(), serde_json::to_string_pretty(&rules)?)?;
+    Ok(active)
+}
+
+/// Incoming clients replace the pack. An empty pack leaves the current clients in place.
+pub fn apply_fixpack(current: RepairRules, incoming: RepairRules) -> RepairRules {
+    if incoming.clients.is_empty() {
+        return current;
+    }
+    RepairRules {
+        version: current.version.max(incoming.version).saturating_add(1),
+        clients: incoming.clients,
+        notes: if incoming.notes.is_empty() {
+            current.notes
+        } else {
+            incoming.notes
+        },
+    }
+}
+
+fn fetch_fixpack_rules() -> Result<RepairRules> {
+    let mut rules = load_active_rules().unwrap_or_else(bootstrap_rules);
     if let Ok(resp) = ureq::get(YTMDESKTOP_HINTS)
         .set("User-Agent", "NeighbourhoodMusic/2026")
         .call()
@@ -162,9 +206,16 @@ fn fetch_fixpack_rules() -> Result<RepairRules> {
             }
         }
     }
-    let _ = ureq::get(FIXPACK_URL)
+    if let Ok(resp) = ureq::get(FIXPACK_URL)
         .set("User-Agent", "NeighbourhoodMusic/2026")
-        .call();
+        .call()
+    {
+        if let Ok(body) = resp.into_string() {
+            if let Ok(incoming) = serde_json::from_str::<RepairRules>(&body) {
+                rules = apply_fixpack(rules, incoming);
+            }
+        }
+    }
     fs::write(rules_path(), serde_json::to_string_pretty(&rules)?)?;
     Ok(rules)
 }
@@ -216,7 +267,18 @@ fn download_ytdlp(nightly: bool) -> Result<()> {
 }
 
 /// Full auto-repair sequence. Safe to call from a background thread.
-pub fn run_auto_repair(_engine: Arc<crate::ytm::YtmEngine>) -> Result<()> {
+fn stop_if_cancelled() -> Result<()> {
+    if cancelled() {
+        let restored = rollback_good().unwrap_or(false);
+        if restored {
+            set_status(RepairPhase::RolledBack, "Repair cancelled; restored last good");
+        }
+        anyhow::bail!("cancelled");
+    }
+    Ok(())
+}
+
+pub fn run_auto_repair(engine: Arc<crate::ytm::YtmEngine>) -> Result<()> {
     if REPAIRING.swap(true, Ordering::SeqCst) {
         anyhow::bail!("repair already running");
     }
@@ -225,24 +287,25 @@ pub fn run_auto_repair(_engine: Arc<crate::ytm::YtmEngine>) -> Result<()> {
         snapshot_good();
 
         set_status(RepairPhase::Rotating, "Rotating client identities…");
-        if cancelled() {
-            anyhow::bail!("cancelled");
-        }
+        let active = rotate_saved_clients()?;
+        engine.reload_rules();
+        set_status(
+            RepairPhase::Rotating,
+            format!("Using YouTube Music client {active}"),
+        );
+        stop_if_cancelled()?;
 
         set_status(RepairPhase::FetchingRules, "Fetching extractor rules…");
         let _ = fetch_fixpack_rules()?;
-        if cancelled() {
-            anyhow::bail!("cancelled");
-        }
+        engine.reload_rules();
+        stop_if_cancelled()?;
 
         set_status(RepairPhase::UpdatingYtDlp, "Updating yt-dlp…");
         if download_ytdlp(false).is_err() {
             tracing::warn!("stable yt-dlp update failed; trying nightly");
             let _ = download_ytdlp(true);
         }
-        if cancelled() {
-            anyhow::bail!("cancelled");
-        }
+        stop_if_cancelled()?;
 
         set_status(RepairPhase::Smoking, "Smoke-testing YouTube Music…");
         let fresh = crate::ytm::YtmEngine::new();
@@ -254,11 +317,17 @@ pub fn run_auto_repair(_engine: Arc<crate::ytm::YtmEngine>) -> Result<()> {
             }
             Err(e) => {
                 tracing::warn!(error = %e, "smoke failed; rolling back");
-                rollback_good()?;
-                set_status(
-                    RepairPhase::RolledBack,
-                    format!("Repair failed; restored last good ({e:#})"),
-                );
+                if rollback_good()? {
+                    set_status(
+                        RepairPhase::RolledBack,
+                        format!("Repair failed; restored last good ({e:#})"),
+                    );
+                } else {
+                    set_status(
+                        RepairPhase::Failed(format!("{e:#}")),
+                        format!("Repair failed and there was no last-good copy ({e:#})"),
+                    );
+                }
                 Err(e)
             }
         }
@@ -297,15 +366,84 @@ pub fn schedule_proactive_checks() {
     std::thread::spawn(|| {
         std::thread::sleep(std::time::Duration::from_secs(8));
         let engine = crate::ytm::YtmEngine::new();
-        if engine.smoke_test().is_err() {
-            spawn_auto_repair();
+        if let Err(e) = engine.smoke_test() {
+            // Quiet notice only — do not dump yt-dlp stderr into the UI or
+            // auto-run a repair that leaves a Failed banner on every cold start.
+            tracing::warn!(error = %e, "YTM smoke failed at startup; waiting for user repair");
+            set_status(
+                RepairPhase::Failed("smoke".into()),
+                "Playback extractors need repair",
+            );
         }
         loop {
             std::thread::sleep(std::time::Duration::from_secs(24 * 3600));
             let engine = crate::ytm::YtmEngine::new();
-            if engine.smoke_test().is_err() {
-                spawn_auto_repair();
+            if let Err(e) = engine.smoke_test() {
+                tracing::warn!(error = %e, "daily YTM smoke failed");
+                set_status(
+                    RepairPhase::Failed("smoke".into()),
+                    "Playback extractors need repair",
+                );
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn client(name: &str) -> ClientRule {
+        ClientRule {
+            name: name.into(),
+            client_name: name.into(),
+            client_version: "1".into(),
+            api_key: "k".into(),
+        }
+    }
+
+    #[test]
+    fn rotate_makes_the_next_client_active() {
+        let mut rules = RepairRules {
+            version: 1,
+            clients: vec![client("WEB_REMIX"), client("ANDROID_MUSIC"), client("IOS")],
+            notes: String::new(),
+        };
+        assert_eq!(rotate_rules(&mut rules), "ANDROID_MUSIC");
+        assert_eq!(rules.clients[0].name, "ANDROID_MUSIC");
+        assert_eq!(rules.clients[2].name, "WEB_REMIX");
+        assert_eq!(rotate_rules(&mut rules), "IOS");
+        let mut one = RepairRules {
+            clients: vec![client("WEB_REMIX")],
+            ..rules
+        };
+        assert_eq!(rotate_rules(&mut one), "WEB_REMIX");
+    }
+
+    #[test]
+    fn fixpack_replaces_clients_and_ignores_an_empty_pack() {
+        let current = RepairRules {
+            version: 2,
+            clients: vec![client("WEB_REMIX")],
+            notes: "current".into(),
+        };
+        let incoming = RepairRules {
+            version: 4,
+            clients: vec![client("ANDROID_MUSIC")],
+            notes: "pack".into(),
+        };
+        let merged = apply_fixpack(current.clone(), incoming);
+        assert_eq!(merged.clients[0].name, "ANDROID_MUSIC");
+        assert_eq!(merged.version, 5);
+        let kept = apply_fixpack(
+            current,
+            RepairRules {
+                version: 9,
+                clients: vec![],
+                notes: "empty".into(),
+            },
+        );
+        assert_eq!(kept.clients[0].name, "WEB_REMIX");
+        assert_eq!(kept.version, 2);
+    }
 }

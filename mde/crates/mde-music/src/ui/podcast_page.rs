@@ -32,6 +32,8 @@ struct Incoming {
     shows: Option<std::result::Result<Vec<Show>, String>>,
     episodes: Option<std::result::Result<(Show, Vec<Episode>), String>>,
     note: Option<String>,
+    /// Updated "This server" catalog after subscribe/refresh (applied on GTK thread).
+    server_shows: Option<Vec<Show>>,
 }
 
 #[derive(Clone)]
@@ -147,31 +149,53 @@ impl PodcastPage {
         let pending = self.pending.clone();
         let gen = self.generation.get();
         std::thread::spawn(move || {
-            let note = match backend.subscribe_podcast(&show.feed_url) {
+            let (note, server_shows) = match backend.subscribe_podcast(&show.feed_url) {
                 Ok(()) => {
                     podcasts::forget_subscription(&show.feed_url);
-                    "Saved and subscribed on this server.".to_string()
+                    let list = backend
+                        .podcasts()
+                        .unwrap_or_default()
+                        .iter()
+                        .map(Show::from_server)
+                        .collect::<Vec<_>>();
+                    (
+                        "Saved and subscribed on this server. Open This server or tap Refresh for episodes."
+                            .to_string(),
+                        Some(list),
+                    )
                 }
-                Err(_) => {
+                Err(err) => {
                     podcasts::queue_subscription(&show);
-                    "Saved. Subscription will be tried again next time you connect.".to_string()
+                    (
+                        format!(
+                            "Saved locally, but the server could not subscribe ({err:#}). Will retry on next connect."
+                        ),
+                        None,
+                    )
                 }
             };
             let mut slot = pending.lock();
             match slot.as_mut() {
                 Some(item) if item.gen > gen => {}
-                Some(item) => item.note = Some(note),
+                Some(item) => {
+                    item.note = Some(note);
+                    if let Some(shows) = server_shows {
+                        item.server_shows = Some(shows);
+                    }
+                }
                 None => {
                     *slot = Some(Incoming {
                         gen,
                         shows: None,
                         episodes: None,
                         note: Some(note),
+                        server_shows,
                     });
                 }
             }
         });
     }
+
 
     fn start_shows(&self, _append: bool) {
         *self.episodes.borrow_mut() = None;
@@ -217,7 +241,7 @@ impl PodcastPage {
         }
     }
 
-    fn open_show(&self, show: Show) {
+    pub(crate) fn open_show(&self, show: Show) {
         self.back.set_visible(true);
         self.header.set_visible(true);
         *self.episodes.borrow_mut() = None;
@@ -238,6 +262,7 @@ impl PodcastPage {
                     shows: None,
                     episodes: Some(result.map_err(|err| format!("{err:#}"))),
                     note: None,
+                    server_shows: None,
                 });
             }
         });
@@ -268,10 +293,56 @@ impl PodcastPage {
         sub.set_xalign(0.0);
         text.append(&title);
         text.append(&sub);
+        let actions = GtkBox::new(Orientation::Vertical, 6);
+        actions.set_valign(Align::Center);
         let save = save_button(self, show);
+        let refresh = Button::with_label("Refresh");
+        refresh.add_css_class("nm-chip");
+        refresh.set_tooltip_text(Some("Reload episodes from the feed and server"));
+        let page = self.clone();
+        let show_r = show.clone();
+        refresh.connect_clicked(move |_| page.refresh_show(&show_r));
+        actions.append(&save);
+        actions.append(&refresh);
         self.header.append(&art);
         self.header.append(&text);
-        self.header.append(&save);
+        self.header.append(&actions);
+    }
+
+    fn refresh_show(&self, show: &Show) {
+        self.status.set_text("Refreshing episodes…");
+        let gen = self.bump();
+        let pending = self.pending.clone();
+        let backend = self.state.backend.read().clone();
+        let show = show.clone();
+        std::thread::spawn(move || {
+            let refresh_note = if let Some(be) = backend.as_ref() {
+                match be.refresh_podcasts() {
+                    Ok(()) => None,
+                    Err(err) => {
+                        tracing::warn!(error = %err, "refreshPodcasts failed");
+                        Some(format!("Server refresh failed: {err:#}"))
+                    }
+                }
+            } else {
+                Some("No server is connected; reloaded the feed only.".into())
+            };
+            if refresh_note.is_none() {
+                std::thread::sleep(Duration::from_millis(800));
+            }
+            let result = load_episodes(backend.as_ref(), &show).map(|eps| (show, eps));
+            let mut slot = pending.lock();
+            let keep = slot.as_ref().map(|item| gen >= item.gen).unwrap_or(true);
+            if keep {
+                *slot = Some(Incoming {
+                    gen,
+                    shows: None,
+                    episodes: Some(result.map_err(|err| format!("{err:#}"))),
+                    note: refresh_note,
+                    server_shows: None,
+                });
+            }
+        });
     }
 
     fn replace_shows(&self, shows: Vec<Show>, status: &str) {
@@ -484,6 +555,16 @@ impl PodcastPage {
     }
 
     fn apply_incoming(&self, incoming: Incoming) {
+        if let Some(shows) = incoming.server_shows {
+            *self.server.borrow_mut() = shows;
+            if matches!(*self.mode.borrow(), Browse::Server) && self.episodes.borrow().is_none() {
+                let n = self.server.borrow().len();
+                self.replace_shows(
+                    self.server.borrow().clone(),
+                    &format!("{n} show{} on this server", plural(n)),
+                );
+            }
+        }
         if let Some(result) = incoming.shows {
             match result {
                 Ok(shows) => {
@@ -496,18 +577,37 @@ impl PodcastPage {
         if let Some(result) = incoming.episodes {
             match result {
                 Ok((show, episodes)) if episodes.is_empty() => {
-                    self.status.set_text("This show has no episodes.");
+                    let extra = incoming
+                        .note
+                        .as_deref()
+                        .map(|note| format!(" {note}"))
+                        .unwrap_or_default();
+                    self.status
+                        .set_text(&format!("This show has no episodes.{extra}"));
                     *self.episodes.borrow_mut() = Some(EpisodeList {
                         show,
                         episodes,
                         shown: 0,
                     });
                 }
-                Ok((show, episodes)) => self.show_episodes(show, episodes),
-                Err(err) => self.status.set_text(&format!("Could not load episodes: {err}")),
+                Ok((show, episodes)) => {
+                    self.show_episodes(show, episodes);
+                    if let Some(note) = incoming.note.as_deref() {
+                        let current = self.status.text();
+                        self.status.set_text(&format!("{current} · {note}"));
+                    }
+                }
+                Err(err) => {
+                    let extra = incoming
+                        .note
+                        .as_deref()
+                        .map(|note| format!(" {note}"))
+                        .unwrap_or_default();
+                    self.status
+                        .set_text(&format!("Could not load episodes: {err}.{extra}"));
+                }
             }
-        }
-        if let Some(note) = incoming.note {
+        } else if let Some(note) = incoming.note {
             self.status.set_text(&note);
         }
     }
@@ -536,6 +636,7 @@ fn store_shows(
             shows: Some(result),
             episodes: None,
             note: None,
+            server_shows: None,
         });
     }
 }
@@ -544,21 +645,35 @@ fn load_episodes(
     backend: Option<&Arc<dyn crate::backend::MediaBackend>>,
     show: &Show,
 ) -> anyhow::Result<Vec<Episode>> {
+    let mut server_eps = Vec::new();
     if let Some(id) = show.id.strip_prefix("server:") {
         if let Some(backend) = backend {
             if let Ok(found) = backend.podcast_episodes(id) {
-                let mut episodes: Vec<Episode> = found
+                server_eps = found
                     .into_iter()
                     .filter_map(|episode| Episode::from_server(id, &episode, show.artwork.clone()))
                     .collect();
-                if !episodes.is_empty() {
-                    podcasts::sort_newest(&mut episodes);
-                    return Ok(episodes);
-                }
             }
         }
     }
-    podcasts::episodes_for_feed(show)
+    // Always try the live feed so undownloaded / skipped server episodes still appear.
+    let feed_eps = match podcasts::episodes_for_feed(show) {
+        Ok(eps) => eps,
+        Err(err) => {
+            if server_eps.is_empty() {
+                return Err(err);
+            }
+            tracing::warn!(error = %err, "feed refresh failed; using server episodes only");
+            Vec::new()
+        }
+    };
+    let merged = podcasts::merge_episode_lists(server_eps, feed_eps);
+    if merged.is_empty() {
+        anyhow::bail!(
+            "no playable episodes yet — try Refresh, or Save the show so the server can download"
+        );
+    }
+    Ok(merged)
 }
 
 fn describe(mode: &Browse, n: usize) -> String {
@@ -666,7 +781,7 @@ pub(crate) fn build_podcast_page(state: Rc<AppState>) -> PodcastPage {
     heading.add_css_class("nm-heading");
     heading.set_halign(Align::Start);
     let blurb = Label::new(Some(
-        "Discover shows on Apple Podcasts and Podcast Index. Open a show to pick an episode. Previous and Next move through that show. Save keeps it on this machine.",
+        "Search Apple Podcasts / Podcast Index, or open This server for subscribed shows. Save subscribes on your media server. Refresh reloads episodes (needed for large feeds like The Daily).",
     ));
     blurb.add_css_class("nm-muted");
     blurb.set_halign(Align::Start);

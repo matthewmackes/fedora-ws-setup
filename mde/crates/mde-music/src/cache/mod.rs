@@ -6,7 +6,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::net::UdpSocket;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -134,32 +134,34 @@ pub fn refresh_full(server_id: &str, base_url: &str, backend: Arc<dyn MediaBacke
     Ok(snap)
 }
 
+pub fn cache_bytes() -> u64 {
+    fn walk(path: &PathBuf, total: &mut u64) {
+        let Ok(rd) = fs::read_dir(path) else { return };
+        for entry in rd.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, total);
+            } else if let Ok(meta) = entry.metadata() {
+                *total += meta.len();
+            }
+        }
+    }
+    let mut total = 0;
+    walk(&cache_root(), &mut total);
+    total
+}
+
+pub fn clear_web_art() -> Result<()> {
+    let dir = cache_root().join("web-art");
+    if dir.exists() {
+        fs::remove_dir_all(&dir)?;
+    }
+    fs::create_dir_all(dir)?;
+    Ok(())
+}
+
 pub fn ensure_dirs() -> Result<()> {
     fs::create_dir_all(cache_root())?;
     Ok(())
 }
 
-pub fn audio_cache_dir(server_id: &str) -> PathBuf {
-    cache_root().join(server_id).join("audio")
-}
-
-pub fn cache_audio_file(server_id: &str, track_id: &str, url: &str) -> Result<PathBuf> {
-    let dir = audio_cache_dir(server_id);
-    fs::create_dir_all(&dir)?;
-    let path = dir.join(format!("{track_id}.bin"));
-    if path.exists() {
-        return Ok(path);
-    }
-    if !is_lan_host(url) && !url.contains("127.0.0.1") {
-        // Still allow caching when stream URL host is LAN even if API was remote
-    }
-    let resp = ureq::get(url).call()?;
-    let mut bytes = Vec::new();
-    resp.into_reader().read_to_end(&mut bytes)?;
-    fs::write(&path, bytes)?;
-    Ok(path)
-}
-
-pub fn file_uri(path: &Path) -> String {
-    format!("file://{}", path.display())
-}

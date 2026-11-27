@@ -56,17 +56,34 @@ impl MediaBackend for YoutubeMusicBackend {
     }
 
     fn artists(&self) -> Result<Vec<Artist>> {
-        Ok(Vec::new())
+        let mut seen = std::collections::HashMap::<String, Artist>::new();
+        for album in self.albums().unwrap_or_default() {
+            let name = album.artist.trim();
+            if name.is_empty() {
+                continue;
+            }
+            seen.entry(name.to_ascii_lowercase()).or_insert(Artist {
+                id: format!("ytm:artist:{name}"),
+                name: name.to_string(),
+                cover_url: album.cover_url.clone(),
+                album_count: Some(1),
+            });
+        }
+        Ok(seen.into_values().collect())
     }
 
     fn albums(&self) -> Result<Vec<Album>> {
-        Ok(self
+        let mut albums: Vec<Album> = self
             .engine
             .home_shelves()
             .unwrap_or_default()
             .into_iter()
             .flat_map(|s| s.albums)
-            .collect())
+            .collect();
+        if let Ok(more) = self.engine.charts_moods() {
+            albums.extend(more.into_iter().flat_map(|s| s.albums));
+        }
+        Ok(albums)
     }
 
     fn artist_albums(&self, artist_id: &str) -> Result<Vec<Album>> {
@@ -108,7 +125,13 @@ impl MediaBackend for YoutubeMusicBackend {
         Ok(Vec::new())
     }
     fn made_for_you(&self) -> Result<Vec<HomeShelf>> {
-        self.engine.charts_moods()
+        match self.engine.charts_moods() {
+            Ok(shelves) => Ok(shelves),
+            Err(err) => {
+                crate::ytm::repair::note_ytm_failure();
+                Err(err)
+            }
+        }
     }
     fn radio_shelves(&self) -> Result<Vec<HomeShelf>> {
         self.engine.charts_moods()

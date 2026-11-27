@@ -28,9 +28,14 @@ pub struct YtmEngine {
 
 impl YtmEngine {
     pub fn new() -> Self {
-        let mut client = InnertubeClient::default();
+        let client = InnertubeClient::default();
         client.load_repair_overrides();
         Self { client }
+    }
+
+    /// Re-read repair rules so the next request uses the rotated client.
+    pub fn reload_rules(&self) {
+        self.client.load_repair_overrides();
     }
 
     pub fn search(&self, query: &str) -> Result<SearchResults> {
@@ -57,42 +62,58 @@ impl YtmEngine {
         self.client.charts_and_moods()
     }
 
-    /// Resolve best audio URL; falls back to yt-dlp when native fails.
+    /// Native Innertube first. A URL that does not return audio falls back to yt-dlp.
+    /// No Electron or ytmdesktop process is involved.
     pub fn resolve_stream(&self, video_id: &str) -> Result<stream::ResolvedStream> {
+        let mut native_err = None;
         match self.client.resolve_audio(video_id) {
-            Ok(s) => Ok(s),
-            Err(native_err) => {
-                tracing::warn!(%native_err, "native YTM resolve failed; trying yt-dlp");
-                stream::resolve_via_ytdlp(video_id).map_err(|e| {
-                    anyhow::anyhow!("native: {native_err:#}; yt-dlp: {e:#}")
-                })
+            Ok(mut stream) => {
+                stream.needs_android_ua = stream.url.contains("googlevideo.com");
+                let probe_ok = stream::url_is_playable(&stream.url, stream.needs_android_ua);
+                if stream::native_probe_accepted(&stream.url, probe_ok) {
+                    tracing::info!("playing native Innertube stream");
+                    return Ok(stream);
+                }
+                native_err = Some("native URL did not return audio".to_string());
+                tracing::warn!("native Innertube URL was not playable; falling back to yt-dlp");
             }
+            Err(err) => {
+                native_err = Some(format!("{err:#}"));
+                tracing::warn!(%err, "native Innertube failed; falling back to yt-dlp");
+            }
+        }
+        match stream::resolve_via_ytdlp(video_id) {
+            Ok(stream) => Ok(stream),
+            Err(ytdlp_err) => Err(anyhow::anyhow!(
+                "native: {}; yt-dlp: {ytdlp_err:#}",
+                native_err.unwrap_or_else(|| "not tried".into())
+            )),
         }
     }
 
     pub fn smoke_test(&self) -> Result<()> {
-        let sr = self.search("music")?;
-        let track = sr
-            .tracks
-            .first()
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("smoke: no search hits"))?;
-        let id = track
-            .id
-            .strip_prefix("ytm:")
-            .unwrap_or(&track.id)
-            .to_string();
+        const PROBE_IDS: &[&str] = &["dQw4w9WgXcQ", "kJQP7kiw5Fk", "fJ9rUzIMcZQ"];
         let _ = self.home_shelves()?;
-        let stream = self.resolve_stream(&id)?;
-        if stream.url.is_empty() {
-            anyhow::bail!("smoke: empty stream url");
+        let mut last_err = None;
+        for id in PROBE_IDS {
+            match self.resolve_stream(id) {
+                Ok(stream) if !stream.url.is_empty() => {
+                    if stream.url.starts_with("file:") {
+                        return Ok(());
+                    }
+                    let mut req = ureq::get(&stream.url).set("Range", "bytes=0-4095");
+                    if stream.needs_android_ua {
+                        req = req.set("User-Agent", stream::ANDROID_YT_UA);
+                    }
+                    req.call()
+                        .map_err(|e| anyhow::anyhow!("smoke play buffer: {e}"))?;
+                    return Ok(());
+                }
+                Ok(_) => last_err = Some(anyhow::anyhow!("smoke: empty stream url for {id}")),
+                Err(e) => last_err = Some(e),
+            }
         }
-        // Short buffered play probe via ureq HEAD/GET of a few KB.
-        let _ = ureq::get(&stream.url)
-            .set("Range", "bytes=0-4095")
-            .call()
-            .map_err(|e| anyhow::anyhow!("smoke play buffer: {e}"))?;
-        Ok(())
+        Err(last_err.unwrap_or_else(|| anyhow::anyhow!("smoke: no playable probe")))
     }
 }
 

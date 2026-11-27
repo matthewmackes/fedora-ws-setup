@@ -8,6 +8,17 @@ pub enum BackendKind {
     YoutubeMusic,
 }
 
+impl SourceKind {
+    pub fn badge(self) -> &'static str {
+        match self {
+            Self::Server => "LIB",
+            Self::YoutubeMusic => "YT",
+            Self::Local => "LOC",
+            Self::Merged => "MIX",
+        }
+    }
+}
+
 impl BackendKind {
     pub fn label(self) -> &'static str {
         match self {
@@ -97,6 +108,14 @@ pub struct Track {
     pub source: SourceKind,
     #[serde(default)]
     pub video_url: Option<String>,
+}
+
+/// A separate video the Watch tab can show. Audio playback does not require one.
+pub fn watchable_video(url: Option<&str>) -> bool {
+    url.is_some_and(|url| {
+        let url = url.trim();
+        url.starts_with("https://") || url.starts_with("http://") || url.starts_with("file:")
+    })
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -214,6 +233,14 @@ impl RepeatMode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn watch_needs_a_real_video_url() {
+        assert!(!watchable_video(None));
+        assert!(!watchable_video(Some("")));
+        assert!(!watchable_video(Some("not a url")));
+        assert!(watchable_video(Some("https://example/video")));
+    }
 
     #[test]
     fn transcode_cycles() {

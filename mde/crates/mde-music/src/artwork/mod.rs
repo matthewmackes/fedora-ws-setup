@@ -1,4 +1,4 @@
-//! Cover art from public web APIs (iTunes / Cover Art Archive), not the media server.
+//! Cover art: server first, then CAA / Fanart / iTunes (hero) / YouTube fallbacks.
 
 use anyhow::{bail, Result};
 use md5::Digest;
@@ -57,7 +57,7 @@ fn mem_set(key: &str, val: Option<String>) {
     guard.as_mut().unwrap().insert(key.to_string(), (Instant::now(), val));
 }
 
-/// Resolve a high-res cover URL from the public web. Prefer iTunes CDN, then Cover Art Archive.
+/// Resolve a web cover for shelves/lists — Cover Art Archive first (no iTunes burn).
 pub fn resolve_cover(artist: &str, album: &str) -> Option<String> {
     let artist = artist.trim();
     let album = album.trim();
@@ -79,14 +79,73 @@ pub fn resolve_cover(artist: &str, album: &str) -> Option<String> {
         return Some(url);
     }
 
-    let url = itunes_cover(artist, album).or_else(|| cover_art_archive(artist, album));
+    let url = cover_art_archive(artist, album, 500);
     let _ = fs::create_dir_all(cache_dir());
     let _ = fs::write(&path, url.as_deref().unwrap_or(""));
     mem_set(&key, url.clone());
     url
 }
 
-fn itunes_cover(artist: &str, album: &str) -> Option<String> {
+/// Hero / Stage HD — iTunes 1200 when possible, then CAA 1200, then server.
+pub fn hero_cover(artist: &str, album: &str, server_cover: Option<String>) -> Option<String> {
+    let key = format!("hero|{}", cache_key(artist, album));
+    if let Some(hit) = mem_get(&key) {
+        return hit.or(server_cover);
+    }
+    let url = itunes_cover_hd(artist, album)
+        .or_else(|| cover_art_archive(artist, album, 1200))
+        .or_else(|| resolve_cover(artist, album));
+    mem_set(&key, url.clone());
+    url.or(server_cover)
+}
+
+fn fanart_api_key() -> Option<String> {
+    std::env::var("FANART_API_KEY")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| {
+            crate::history::History::open()
+                .ok()
+                .and_then(|h| h.get_setting("fanart_api_key"))
+                .filter(|s| !s.trim().is_empty())
+        })
+}
+
+/// Fanart.tv artist thumb + background (optional API key).
+pub fn fanart_for_mbid(mbid: &str) -> Option<(Option<String>, Option<String>)> {
+    let key = fanart_api_key()?;
+    let url = format!("https://webservice.fanart.tv/v3/music/{mbid}?api_key={key}");
+    let resp = ureq::get(&url)
+        .set("User-Agent", "NeighbourhoodMusic/2026")
+        .timeout(Duration::from_secs(6))
+        .call()
+        .ok()?;
+    let v: Value = resp.into_json().ok()?;
+    let thumb = v
+        .pointer("/artistthumb/0/url")
+        .and_then(|u| u.as_str())
+        .map(str::to_string)
+        .or_else(|| {
+            v.pointer("/artistthumb/0/url")
+                .and_then(|u| u.as_str())
+                .map(str::to_string)
+        });
+    let bg = v
+        .pointer("/artistbackground/0/url")
+        .and_then(|u| u.as_str())
+        .map(str::to_string)
+        .or_else(|| {
+            v.pointer("/musicbanner/0/url")
+                .and_then(|u| u.as_str())
+                .map(str::to_string)
+        });
+    if thumb.is_none() && bg.is_none() {
+        return None;
+    }
+    Some((thumb, bg))
+}
+
+fn itunes_cover_hd(artist: &str, album: &str) -> Option<String> {
     let term = if album.is_empty() {
         artist.to_string()
     } else if artist.is_empty() {
@@ -125,15 +184,20 @@ fn itunes_cover(artist: &str, album: &str) -> Option<String> {
         })
         .or_else(|| results.first())?;
     let art = best.get("artworkUrl100")?.as_str()?;
-    // Bump to higher resolution on Apple's CDN
     Some(
-        art.replace("100x100bb", "600x600bb")
-            .replace("100x100", "600x600"),
+        art.replace("100x100bb", "1200x1200bb")
+            .replace("100x100", "1200x1200"),
     )
 }
 
-fn cover_art_archive(artist: &str, album: &str) -> Option<String> {
-    let query = format!("{album} AND artist:{artist}");
+fn cover_art_archive(artist: &str, album: &str, size: u32) -> Option<String> {
+    let query = if artist.is_empty() {
+        album.to_string()
+    } else if album.is_empty() {
+        format!("artist:{artist}")
+    } else {
+        format!("{album} AND artist:{artist}")
+    };
     let url = format!(
         "https://musicbrainz.org/ws/2/release/?query={}&fmt=json&limit=1",
         urlencoding::encode(&query)
@@ -144,12 +208,8 @@ fn cover_art_archive(artist: &str, album: &str) -> Option<String> {
         .call()
         .ok()?;
     let v: Value = resp.into_json().ok()?;
-    let mbid = v
-        .pointer("/releases/0/id")
-        .and_then(|x| x.as_str())?;
-    // CAA redirects to archive.org CDN
-    let caa = format!("https://coverartarchive.org/release/{mbid}/front-500");
-    // HEAD to confirm
+    let mbid = v.pointer("/releases/0/id").and_then(|x| x.as_str())?;
+    let caa = format!("https://coverartarchive.org/release/{mbid}/front-{size}");
     match ureq::head(&caa)
         .set("User-Agent", "NeighbourhoodMusic/2026")
         .timeout(Duration::from_secs(4))
@@ -186,6 +246,103 @@ fn looks_like_image(bytes: &[u8]) -> bool {
             || bytes.starts_with(b"\x89PNG")
             || bytes.starts_with(b"GIF8")
             || (bytes.len() > 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP"))
+}
+
+/// Average the colorful pixels, then keep the result visible on the dark shell.
+pub fn accent_from_samples(pixels: &[(u8, u8, u8)]) -> (u8, u8, u8) {
+    if pixels.is_empty() {
+        return (90, 150, 200);
+    }
+    let mut count = 0u64;
+    let mut r = 0u64;
+    let mut g = 0u64;
+    let mut b = 0u64;
+    for &(pr, pg, pb) in pixels {
+        let max = pr.max(pg).max(pb);
+        let min = pr.min(pg).min(pb);
+        if max < 28 || min > 232 {
+            continue;
+        }
+        r += pr as u64;
+        g += pg as u64;
+        b += pb as u64;
+        count += 1;
+    }
+    if count == 0 {
+        for &(pr, pg, pb) in pixels {
+            r += pr as u64;
+            g += pg as u64;
+            b += pb as u64;
+        }
+        count = pixels.len() as u64;
+    }
+    lift_accent(
+        (r / count) as u8,
+        (g / count) as u8,
+        (b / count) as u8,
+    )
+}
+
+fn lift_accent(r: u8, g: u8, b: u8) -> (u8, u8, u8) {
+    let lum = relative_luminance(r, g, b);
+    if lum < 0.08 {
+        mix(r, g, b, 70, 120, 170, 0.55)
+    } else if lum > 0.85 {
+        mix(r, g, b, 40, 70, 110, 0.45)
+    } else {
+        (r, g, b)
+    }
+}
+
+fn mix(r: u8, g: u8, b: u8, tr: u8, tg: u8, tb: u8, toward: f64) -> (u8, u8, u8) {
+    let blend = |a: u8, b: u8| (a as f64 * (1.0 - toward) + b as f64 * toward).round() as u8;
+    (blend(r, tr), blend(g, tg), blend(b, tb))
+}
+
+fn channel_linear(c: u8) -> f64 {
+    let s = c as f64 / 255.0;
+    if s <= 0.04045 {
+        s / 12.92
+    } else {
+        ((s + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+pub fn relative_luminance(r: u8, g: u8, b: u8) -> f64 {
+    0.2126 * channel_linear(r) + 0.7152 * channel_linear(g) + 0.0722 * channel_linear(b)
+}
+
+fn composite(fg: u8, bg: u8, alpha: f64) -> u8 {
+    (fg as f64 * alpha + bg as f64 * (1.0 - alpha)).round() as u8
+}
+
+/// Light text on the tinted scrim. The scrim stays mostly the dark shell.
+pub fn scrim_contrast(r: u8, g: u8, b: u8) -> f64 {
+    let sr = composite(r, 9, 0.28);
+    let sg = composite(g, 11, 0.28);
+    let sb = composite(b, 15, 0.28);
+    let text = relative_luminance(243, 245, 247);
+    let bg = relative_luminance(sr, sg, sb);
+    (text.max(bg) + 0.05) / (text.min(bg) + 0.05)
+}
+
+pub fn accent_css(r: u8, g: u8, b: u8) -> String {
+    format!(
+        "window.nm-window .nm-player {{ border-top: 2px solid rgb({r},{g},{b}); }}\n\
+         window.nm-window .nm-stage {{ background-image: linear-gradient(180deg, rgba({r},{g},{b},0.28), rgba(8,10,14,0.15)); }}\n\
+         window.nm-window .nm-album-bleed, window.nm-window .nm-performer-panel {{ box-shadow: inset 0 0 0 1px rgba({r},{g},{b},0.55); }}\n"
+    )
+}
+
+pub fn accent_from_file(path: &std::path::Path) -> Option<(u8, u8, u8)> {
+    let image = image::open(path).ok()?;
+    let small = image.resize(24, 24, image::imageops::FilterType::Triangle);
+    let pixels: Vec<(u8, u8, u8)> = small
+        .to_rgb8()
+        .pixels()
+        .map(|pixel| (pixel[0], pixel[1], pixel[2]))
+        .collect();
+    Some(accent_from_samples(&pixels))
 }
 
 /// Return a local path only if the image was already downloaded.
@@ -225,7 +382,14 @@ pub fn thumbnail_request_url(url: &str) -> String {
     }
 }
 
+/// Server art first; web (CAA) only when missing.
 pub fn prefer_web_cover(artist: &str, album: &str, server_cover: Option<String>) -> Option<String> {
+    if server_cover
+        .as_ref()
+        .is_some_and(|u| u.contains("://"))
+    {
+        return server_cover;
+    }
     resolve_cover(artist, album).or(server_cover)
 }
 
@@ -242,5 +406,33 @@ mod tests {
         assert_ne!(stable_art_key(a), stable_art_key(c));
         assert!(stable_art_key(a).contains("id=al-1"));
         assert_eq!(image_cache_path(a), image_cache_path(b));
+    }
+
+    #[test]
+    fn accent_follows_the_cover_and_keeps_light_text() {
+        let red = accent_from_samples(&[(180, 30, 40); 16]);
+        assert!(red.0 > red.1 && red.0 > red.2, "{red:?}");
+        for sample in [
+            accent_from_samples(&[(0, 0, 0); 8]),
+            accent_from_samples(&[(255, 255, 255); 8]),
+            red,
+            accent_from_samples(&[(20, 180, 90); 8]),
+        ] {
+            let contrast = scrim_contrast(sample.0, sample.1, sample.2);
+            assert!(contrast >= 4.5, "{sample:?} contrast {contrast}");
+        }
+        let css = accent_css(red.0, red.1, red.2);
+        assert!(css.contains("nm-player"));
+        assert!(css.contains("nm-stage"));
+    }
+
+    #[test]
+    fn accent_from_a_png_matches_its_color() {
+        let path = std::env::temp_dir().join(format!("nm-accent-{}.png", std::process::id()));
+        let image = image::RgbImage::from_pixel(16, 16, image::Rgb([20, 40, 180]));
+        image.save(&path).unwrap();
+        let (r, g, b) = accent_from_file(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert!(b > r && b > g, "{r} {g} {b}");
     }
 }

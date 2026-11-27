@@ -1,22 +1,75 @@
-/* MDE Carbon tokens + artwork-driven accent hook (--nm-accent). */
+/* Neighbourhood Music — 10-pass photo-real carbon polish.
+   Tokens: deep charcoal, cool key light, tactile covers, glass chrome. */
+
 window.nm-window {
-  background-color: #1b1d21;
-  color: #f2f4f7;
+  background-color: #090b0f;
+  background-image:
+    radial-gradient(90% 70% at 8% -10%, rgba(70, 110, 160, 0.28), transparent 55%),
+    radial-gradient(70% 50% at 92% 110%, rgba(30, 80, 60, 0.14), transparent 50%),
+    linear-gradient(180deg, #12161d 0%, #090b0f 48%, #07080b 100%);
+  color: #f3f5f7;
   border: none;
   box-shadow: none;
   outline: none;
 }
 
+/* Unclassed GTK widgets stay on the dark shell. Focus is a cool ring, not a white box. */
+window.nm-window button,
+window.nm-window entry,
+window.nm-window text,
+window.nm-window textview,
+window.nm-window spinbutton,
+window.nm-window menubutton,
+window.nm-window popover,
+window.nm-window list,
+window.nm-window listview,
+window.nm-window columnview,
+window.nm-window scrolledwindow,
+window.nm-window viewport,
+window.nm-window checkbutton,
+window.nm-window switch {
+  background-color: #12161d;
+  color: #f3f5f7;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+window.nm-window entry,
+window.nm-window text,
+window.nm-window textview {
+  background-color: #0c1016;
+  caret-color: #8ec8ff;
+  min-height: 32px;
+}
+window.nm-window button:focus,
+window.nm-window entry:focus,
+window.nm-window row:focus,
+window.nm-window checkbutton:focus {
+  outline: 2px solid #8ec8ff;
+  outline-offset: 1px;
+}
+window.nm-window button:disabled,
+window.nm-window entry:disabled {
+  background-color: #0c1016;
+  color: #8b939c;
+}
+window.nm-window label {
+  color: #f3f5f7;
+}
+
+.nm-safe-bottom {
+  background-color: transparent;
+  min-height: 6px;
+}
+
 .nm-titlebar {
-  background-color: #12141a;
-  color: #f2f4f7;
-  border-bottom: 1px solid #2a2e36;
+  background-color: rgba(8, 10, 14, 0.94);
+  color: #f3f5f7;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   padding: 6px 10px;
   min-height: 40px;
 }
 .nm-titlebar-title {
   font-weight: 800;
-  color: #5eb1ff;
+  color: #8ec8ff;
 }
 .nm-repair-banner {
   background-color: #2a2110;
@@ -24,24 +77,50 @@ window.nm-window {
   padding: 8px 12px;
   border-bottom: 1px solid #5a4418;
 }
+.nm-album-bleed {
+  min-height: 480px;
+  border-radius: 18px;
+  background-color: #0c1016;
+}
+.nm-album-bleed-art {
+  border-radius: 18px;
+}
 .nm-album-hero {
-  padding: 24px;
-  background-image: linear-gradient(180deg, #2a3a4a, #1b1d21);
-  border-radius: 12px;
+  padding: 28px;
+  background-image: linear-gradient(165deg, rgba(70, 110, 150, 0.42), rgba(9, 11, 15, 0.96) 72%);
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
 }
 .nm-frost-tracks {
-  background-color: rgba(14, 16, 20, 0.72);
-  border-radius: 12px;
-  padding: 12px;
-  margin-top: 8px;
+  background-color: rgba(6, 8, 12, 0.78);
+  border-radius: 14px;
+  padding: 14px;
+  margin-top: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.045);
 }
 .nm-badge {
   font-size: 10px;
   font-weight: 800;
-  color: #5eb1ff;
+  letter-spacing: 0.06em;
+  color: #8ec8ff;
 }
 .nm-stage {
-  background-color: #0e1014;
+  background-color: transparent;
+  background-image:
+    radial-gradient(58% 48% at 50% 30%, rgba(100, 150, 210, 0.20), transparent 72%),
+    linear-gradient(180deg, rgba(16, 20, 28, 0.55), rgba(8, 10, 14, 0.2));
+  padding-top: 8px;
+}
+.nm-stage-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  margin-top: 4px;
+}
+.nm-stage-artist {
+  font-size: 13px;
+  color: #a7b0bc;
 }
 .nm-mini .nm-sidebar {
   min-width: 0;
@@ -65,18 +144,20 @@ window.nm-window button.nm-close:hover {
 
 window.nm-window list.nm-library-list,
 window.nm-window list.nm-server-list {
-  background-color: #121212;
+  background-color: transparent;
   background-image: none;
   color: #ffffff;
 }
 window.nm-window row.nm-lib-row,
 window.nm-window list.nm-library-list > row,
 window.nm-window list.nm-server-list > row {
-  background-color: #181818;
+  background-color: rgba(16, 18, 24, 0.55);
   background-image: none;
   color: #ffffff;
   border: none;
   box-shadow: none;
+  border-radius: 10px;
+  margin: 2px 0;
   padding: 2px 4px;
 }
 window.nm-window row.nm-lib-row:hover,
@@ -86,13 +167,14 @@ window.nm-window list.nm-library-list > row:hover,
 window.nm-window list.nm-library-list > row:selected,
 window.nm-window list.nm-server-list > row:hover,
 window.nm-window list.nm-server-list > row:selected {
-  background-color: #282828;
+  background-color: rgba(42, 52, 68, 0.92);
   background-image: none;
   color: #ffffff;
 }
 .nm-lib-cover {
   min-width: 48px;
   min-height: 48px;
+  border-radius: 7px;
 }
 window.nm-window label.nm-lib-label,
 window.nm-window row.nm-lib-row label,
@@ -103,128 +185,280 @@ window.nm-window list.nm-server-list row label {
 }
 
 .nm-sidebar {
-  background-color: #000000;
-  min-width: 180px;
-  padding: 12px;
+  background-color: rgba(0, 0, 0, 0.55);
+  background-image: linear-gradient(180deg, #0b0d12 0%, #050607 100%);
+  min-width: 196px;
+  padding: 16px 12px 12px 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .nm-brand {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 800;
-  letter-spacing: -0.5px;
-  color: #5eb1ff;
-  padding: 8px 12px 16px 12px;
+  letter-spacing: -0.7px;
+  color: #f5f7fa;
+  padding: 4px 12px 0 12px;
+}
+.nm-brand-sub {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  color: #8ec8ff;
 }
 
-.nm-nav-btn {
-  background: transparent;
+window.nm-window label {
+  color: #f3f5f7;
+}
+window.nm-window label.nm-muted,
+.nm-muted {
+  color: #a7b0bc;
+}
+window.nm-window label.nm-card-sub,
+.nm-card-sub {
+  color: #a7b0bc;
+}
+window.nm-window label.nm-nav-section,
+.nm-nav-section {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #6f7a88;
+}
+.nm-nav-sep {
+  margin: 10px 8px;
+  background-color: rgba(255, 255, 255, 0.07);
+  min-height: 1px;
+}
+.nm-time {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: #9aa3af;
+  min-width: 36px;
+}
+
+window.nm-window button.nm-nav-btn {
+  background-color: transparent;
+  background-image: none;
   border: none;
-  color: #b3b3b3;
-  border-radius: 6px;
-  padding: 10px 14px;
+  box-shadow: none;
+  color: #a7b0bc;
+  border-radius: 9px;
+  padding: 9px 14px;
   font-weight: 600;
 }
-.nm-nav-btn:hover {
-  color: #ffffff;
-  background-color: #1a1a1a;
+window.nm-window button.nm-nav-btn label {
+  color: #a7b0bc;
 }
-.nm-nav-btn.active {
+window.nm-window button.nm-nav-btn:hover {
   color: #ffffff;
-  background-color: #282828;
+  background-color: rgba(255, 255, 255, 0.06);
+  background-image: none;
+}
+window.nm-window button.nm-nav-btn:hover label {
+  color: #ffffff;
+}
+window.nm-window button.nm-nav-btn.active {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.10);
+  background-image: none;
+  box-shadow: inset 3px 0 0 #8ec8ff;
+}
+window.nm-window button.nm-nav-btn.active label {
+  color: #ffffff;
 }
 
 .nm-main {
-  background-color: #121212;
-  padding: 20px 24px;
+  background-color: transparent;
+  padding: 16px 20px;
 }
 
 .nm-heading {
   font-size: 28px;
   font-weight: 800;
+  letter-spacing: -0.7px;
   margin-bottom: 12px;
 }
 
 .nm-section-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
+  letter-spacing: -0.25px;
   margin-top: 18px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
-.nm-card {
-  background-color: #181818;
-  border-radius: 8px;
+window.nm-window button.nm-card {
+  background-color: rgba(18, 22, 30, 0.88);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 42%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.42);
+  border-radius: 14px;
   padding: 12px;
-  min-width: 160px;
+  min-width: 168px;
 }
-label {
+window.nm-window button.nm-card label {
   color: #ffffff;
 }
-label.nm-muted, .nm-muted {
-  color: #b3b3b3;
+window.nm-window button.nm-card label.nm-card-sub {
+  color: #a7b0bc;
 }
-label.nm-card-sub, .nm-card-sub {
-  color: #b3b3b3;
+.nm-track-row {
+  min-height: 72px;
 }
-.nm-card:hover {
-  background-color: #282828;
+.nm-artist-card .nm-cover-frame,
+.nm-artist-card .nm-art-fallback,
+.nm-artist-card picture,
+.nm-artist-card image {
+  border-radius: 999px;
+}
+.nm-card-play {
+  opacity: 0;
+}
+.nm-card-wrap:hover .nm-card-play {
+  opacity: 1;
+}
+window.nm-window button.nm-card:hover {
+  background-color: rgba(32, 40, 52, 0.96);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 48%);
+  border-color: rgba(142, 200, 255, 0.28);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55);
 }
 .nm-card-title {
   font-weight: 700;
-  font-size: 14px;
+  font-size: 13.5px;
 }
 .nm-card-sub {
-  color: #b3b3b3;
+  color: #a7b0bc;
   font-size: 12px;
 }
 
+.nm-art-fallback {
+  font-size: 42px;
+  font-weight: 800;
+  color: #d5dde8;
+  background-image: linear-gradient(160deg, #243044, #121820);
+  border-radius: 12px;
+}
+.nm-cover-frame {
+  padding: 0;
+  border-radius: 11px;
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.07);
+  background-color: #12161e;
+}
+.nm-cover-art {
+  border-radius: 11px;
+}
+.nm-stage-cover-frame {
+  padding: 0;
+  border-radius: 18px;
+  box-shadow:
+    0 32px 70px rgba(0, 0, 0, 0.62),
+    0 0 90px rgba(90, 140, 200, 0.14),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
+  background-color: #0e1218;
+}
+.nm-stage-cover-art {
+  border-radius: 18px;
+}
+.nm-now-cover-frame {
+  border-radius: 8px;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.07);
+  background-color: #12161e;
+}
+
 .nm-player {
-  background-color: #181818;
-  border-top: 1px solid #282828;
-  padding: 10px 16px;
-  min-height: 90px;
+  background-color: rgba(10, 12, 16, 0.94);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent 60%);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  padding: 8px 14px 6px 14px;
+  min-height: 72px;
 }
 
 .nm-green {
-  color: #1db954;
-}
-.nm-muted {
-  color: #b3b3b3;
+  color: #1ed760;
 }
 
 entry.nm-search {
-  background-color: #ffffff;
-  color: #000000;
-  border-radius: 24px;
+  background-color: rgba(255, 255, 255, 0.95);
+  color: #0c0e12;
+  border-radius: 22px;
   padding: 8px 16px;
-  min-height: 40px;
+  min-height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
+}
+entry.nm-search:focus {
+  box-shadow: 0 0 0 2px rgba(142, 200, 255, 0.45), 0 10px 22px rgba(0, 0, 0, 0.28);
 }
 
 .nm-track-row {
-  padding: 6px 8px;
-  border-radius: 4px;
+  padding: 8px 10px;
+  border-radius: 9px;
 }
 .nm-track-row:hover {
-  background-color: #1a1a1a;
+  background-color: rgba(255, 255, 255, 0.055);
 }
 
-button.nm-transport {
-  background: #ffffff;
-  color: #000000;
+window.nm-window button.nm-transport {
+  background-color: #ffffff;
+  background-image: none;
+  color: #111111;
   border-radius: 999px;
   padding: 8px 14px;
   font-weight: 700;
   border: none;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
 }
-button.nm-icon {
-  background: transparent;
-  color: #b3b3b3;
+window.nm-window button.nm-transport label {
+  color: #111111;
+}
+window.nm-window button.nm-transport:hover {
+  background-color: #ececec;
+  background-image: none;
+  color: #111111;
+}
+window.nm-window button.nm-transport:hover label {
+  color: #111111;
+}
+window.nm-window button.nm-play {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 14px;
+}
+
+window.nm-window button.nm-icon {
+  background-color: transparent;
+  background-image: none;
+  color: #a7b0bc;
   border: none;
+  box-shadow: none;
   border-radius: 999px;
   padding: 6px 10px;
+  min-width: 34px;
 }
-button.nm-icon:hover {
+window.nm-window button.nm-icon label {
+  color: #a7b0bc;
+}
+window.nm-window button.nm-icon:hover {
   color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.08);
+  background-image: none;
+}
+window.nm-window button.nm-icon:hover label {
+  color: #ffffff;
+}
+window.nm-window button.nm-icon-on,
+window.nm-window button.nm-icon.nm-icon-on {
+  color: #8ec8ff;
+}
+window.nm-window button.nm-icon-on label,
+window.nm-window button.nm-icon.nm-icon-on label {
+  color: #8ec8ff;
 }
 
 .nm-server-list row {
@@ -232,27 +466,63 @@ button.nm-icon:hover {
 }
 
 .nm-tune {
-  background-color: #181818;
-  border-radius: 10px;
-  padding: 8px;
+  background-color: rgba(18, 22, 30, 0.9);
+  border-radius: 12px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 window.nm-window button.nm-chip {
-  background-color: #282828;
+  background-color: rgba(36, 42, 54, 0.92);
   background-image: none;
   color: #ffffff;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: none;
   border-radius: 999px;
-  padding: 6px 14px;
+  padding: 5px 12px;
   font-weight: 600;
+  font-size: 12px;
+}
+window.nm-window button.nm-chip label {
+  color: #ffffff;
 }
 window.nm-window button.nm-chip:hover,
 window.nm-window button.nm-chip.nm-chip-on {
-  background-color: #1db954;
+  background-color: #1ed760;
+  color: #000000;
+  border-color: #1ed760;
+}
+window.nm-window button.nm-chip:hover label,
+window.nm-window button.nm-chip.nm-chip-on label {
   color: #000000;
 }
+
+scale.nm-seek {
+  margin: 0;
+  padding: 0;
+  min-height: 14px;
+}
+scale.nm-seek trough {
+  min-height: 4px;
+  border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.14);
+}
+scale.nm-seek highlight {
+  min-height: 4px;
+  border-radius: 999px;
+  background-color: #ffffff;
+}
+scale.nm-seek slider {
+  min-width: 10px;
+  min-height: 10px;
+  margin: -3px;
+  border-radius: 999px;
+  background-color: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+
 window.nm-window row.nm-lib-row button.nm-open {
   background: transparent;
+  background-image: none;
   border: none;
   box-shadow: none;
   padding: 0;
@@ -261,21 +531,29 @@ window.nm-window row.nm-lib-row button.nm-open {
 }
 window.nm-window row.nm-lib-row button.nm-open:hover {
   background: transparent;
+  background-image: none;
 }
 window.nm-window button.nm-save {
   background-color: transparent;
   background-image: none;
   color: #ffffff;
-  border: 1px solid #3e3e3e;
+  border: 1px solid rgba(255, 255, 255, 0.18);
   box-shadow: none;
   border-radius: 999px;
   padding: 4px 12px;
   min-width: 76px;
 }
+window.nm-window button.nm-save label {
+  color: #ffffff;
+}
 window.nm-window button.nm-save:hover,
 window.nm-window button.nm-save.saved {
-  color: #1db954;
-  border-color: #1db954;
+  color: #1ed760;
+  border-color: #1ed760;
+}
+window.nm-window button.nm-save:hover label,
+window.nm-window button.nm-save.saved label {
+  color: #1ed760;
 }
 window.nm-window row.nm-lib-row.nm-station-on,
 window.nm-window row.nm-station-on {
@@ -283,3 +561,221 @@ window.nm-window row.nm-station-on {
   background-image: none;
   color: #ffffff;
 }
+
+/* —— Home hero (Netflix / Apple Music blend) —— */
+.nm-hero {
+  margin: 4px 0 12px 0;
+}
+.nm-hero-stage {
+  padding: 20px 16px 16px 16px;
+  border-radius: 18px;
+  background-image:
+    radial-gradient(70% 80% at 50% 20%, rgba(120, 160, 210, 0.22), transparent 70%),
+    linear-gradient(180deg, rgba(20, 26, 36, 0.92), rgba(10, 12, 16, 0.96));
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.45);
+}
+.nm-hero-art {
+  border-radius: 16px;
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.nm-hero-title {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.7px;
+  margin-top: 8px;
+}
+.nm-hero-sub {
+  font-size: 13px;
+  color: #a7b0bc;
+}
+
+.nm-progress-ring {
+  box-shadow: 0 0 0 3px rgba(142, 200, 255, 0.35), 0 14px 30px rgba(0, 0, 0, 0.55);
+}
+
+/* —— Performer overview —— */
+.nm-performer-bleed-stage {
+  min-height: 520px;
+  border-radius: 18px;
+  background-color: #0c1016;
+}
+.nm-performer-hero {
+  background-image: linear-gradient(180deg, rgba(16, 22, 32, 0.2), rgba(8, 10, 14, 0.95));
+  padding-top: 8px;
+}
+.nm-performer-bleed {
+  border-radius: 18px;
+  box-shadow: 0 28px 64px rgba(0, 0, 0, 0.6), 0 0 80px rgba(90, 140, 200, 0.12);
+}
+.nm-performer-panel {
+  margin-top: -48px;
+  padding: 18px 20px;
+  border-radius: 16px;
+  background-color: rgba(14, 16, 22, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+}
+.nm-performer-name {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.8px;
+}
+.nm-performer-facts {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d5dde8;
+}
+.nm-performer-bio {
+  font-size: 13px;
+  line-height: 1.45;
+  color: #c2cad4;
+  margin-top: 4px;
+}
+
+.nm-sidebar {
+  background-color: rgba(6, 8, 12, 0.72);
+}
+
+/* Audiophile sits in the same carbon shell as the rest of Neighbourhood Music. */
+.nm-audiophile {
+  padding: 4px 2px 8px 2px;
+}
+.nm-audiophile .nm-eq-plot {
+  background-color: #0c1016;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  min-height: 140px;
+}
+.nm-audiophile checkbutton {
+  min-height: 28px;
+  padding: 1px 0;
+}
+.nm-audiophile entry {
+  min-height: 32px;
+  border-radius: 8px;
+}
+
+/* —— W676 ambient bleed: pages sit on a frosted veil over the global backdrop —— */
+.nm-bleed-host { background-color: #090b0f; }
+window.nm-window .nm-bleed-host scrolledwindow,
+window.nm-window .nm-bleed-host viewport,
+window.nm-window .nm-bleed-host stack,
+window.nm-window .nm-bleed-host paned,
+window.nm-window .nm-bleed-host .nm-main,
+window.nm-window .nm-bleed-host viewport {
+  background-color: transparent;
+  background-image: none;
+}
+window.nm-window .nm-bleed-host .nm-sidebar {
+  background-color: rgba(6, 8, 12, 0.62);
+  background-image: none;
+}
+window.nm-window .nm-bleed-host button.nm-card {
+  background-color: rgba(14, 18, 26, 0.62);
+}
+window.nm-window .nm-bleed-host list,
+window.nm-window .nm-bleed-host listview,
+window.nm-window .nm-bleed-host columnview {
+  background-color: rgba(8, 10, 14, 0.50);
+  border-radius: 12px;
+}
+.nm-album-bleed,
+.nm-performer-bleed-stage {
+  background-color: transparent;
+}
+
+/* —— W659 hero over the global backdrop: transparent card, art shows through —— */
+window.nm-window .nm-hero-stage {
+  background-image: linear-gradient(180deg, rgba(8, 10, 14, 0.05), rgba(8, 10, 14, 0.72));
+  border: none;
+  min-height: 360px;
+}
+window.nm-window .nm-hero-art {
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7);
+}
+
+/* —— W682 microinteractions: eased state changes, press feedback, glowing focus/seek —— */
+window.nm-window button {
+  transition: background-color 180ms ease, box-shadow 220ms ease, color 180ms ease, border-color 180ms ease;
+}
+window.nm-window button:active {
+  box-shadow: inset 0 0 0 999px rgba(255, 255, 255, 0.14), 0 0 22px rgba(142, 200, 255, 0.35);
+  transition-duration: 60ms;
+}
+window.nm-window button:focus-visible {
+  outline: 2px solid rgba(142, 200, 255, 0.95);
+  outline-offset: 3px;
+  transition: outline-offset 160ms ease, outline-color 160ms ease;
+}
+window.nm-window scale.nm-seek highlight {
+  box-shadow: 0 0 14px rgba(142, 200, 255, 0.55);
+  transition: box-shadow 300ms ease;
+}
+window.nm-window button.nm-card {
+  transition: box-shadow 260ms ease, background-color 260ms ease, border-color 260ms ease;
+}
+window.nm-window button.nm-card:hover {
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+@media (prefers-reduced-motion: reduce) {
+  window.nm-window button, window.nm-window button.nm-card, window.nm-window scale.nm-seek highlight {
+    transition: none;
+  }
+}
+
+.nm-artist-photo { border-radius: 999px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5); }
+
+/* —— Loading transitions: shimmering skeletons + fade-in on arrival —— */
+@keyframes nm-shimmer {
+  0%   { opacity: 0.30; }
+  50%  { opacity: 0.85; }
+  100% { opacity: 0.30; }
+}
+@keyframes nm-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.nm-skel {
+  background-color: rgba(255, 255, 255, 0.09);
+  background-image: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.10) 50%, transparent 80%);
+  border-radius: 10px;
+  animation: nm-shimmer 1.5s ease-in-out infinite;
+}
+.nm-skel-d1 { animation-delay: 150ms; }
+.nm-skel-d2 { animation-delay: 300ms; }
+.nm-skel-d3 { animation-delay: 450ms; }
+.nm-skel-cards .nm-skel { border-radius: 14px; }
+.nm-skel-page { padding: 8px 0; }
+.nm-loading-row spinner { color: #8ec8ff; min-width: 18px; min-height: 18px; }
+.nm-fade-in { animation: nm-fade 450ms ease-out; }
+
+/* —— Artist profile: hero, readable About, Details, photos —— */
+.nm-artist-hero { min-height: 400px; }
+.nm-artist-portrait {
+  border-radius: 999px;
+  background-image: linear-gradient(160deg, #2b3a52, #121820);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65), 0 0 0 3px rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+.nm-artist-initial { font-size: 72px; font-weight: 800; color: rgba(255, 255, 255, 0.75); }
+.nm-artist-kicker { font-size: 12px; font-weight: 800; letter-spacing: 3px; color: #8ec8ff; }
+.nm-artist-name { font-size: 56px; font-weight: 900; letter-spacing: -1.5px; text-shadow: 0 4px 28px rgba(0, 0, 0, 0.8); }
+.nm-artist-sub { font-size: 16px; color: #d6dde6; text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8); }
+.nm-pill {
+  font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 999px;
+  background-color: rgba(255, 255, 255, 0.12); color: #f3f5f7;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+.nm-info-card {
+  padding: 22px 26px; border-radius: 18px;
+  background-color: rgba(10, 13, 18, 0.80);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
+}
+.nm-info-title { font-size: 20px; font-weight: 800; letter-spacing: -0.3px; }
+.nm-bio { font-size: 16px; line-height: 1.6; color: #e4e9ef; }
+.nm-credit { font-size: 11px; color: #8b939c; }
+.nm-detail-key { font-size: 13px; font-weight: 700; color: #8b939c; min-width: 96px; }
+.nm-detail-val { font-size: 15px; color: #f3f5f7; }
+.nm-photo { border-radius: 14px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5); }

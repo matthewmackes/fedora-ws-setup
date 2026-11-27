@@ -3,11 +3,74 @@ use anyhow::{Context, Result};
 use gstreamer as gst;
 use gstreamer::prelude::*;
 use parking_lot::Mutex;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock};
+
+/// What the UI should do when GStreamer reports end of stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EosAction {
+    /// Podcasts stop so the next episode is a choice, not an automatic skip.
+    Pause,
+    /// Radio steps to the next station in order.
+    NextStation,
+    /// Library and YouTube Music follow repeat and shuffle.
+    Advance,
+}
+
+pub fn eos_action(radio: bool, podcast: bool) -> EosAction {
+    if podcast {
+        EosAction::Pause
+    } else if radio {
+        EosAction::NextStation
+    } else {
+        EosAction::Advance
+    }
+}
+
+/// Media-key / HTTP skip requests. The UI thread drains these and calls `play_track`.
+#[derive(Clone, Copy, Debug)]
+pub enum SkipRequest {
+    Next,
+    Previous,
+}
+
+fn skip_slot() -> &'static Mutex<Vec<SkipRequest>> {
+    static SLOT: OnceLock<Mutex<Vec<SkipRequest>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+pub fn request_skip(req: SkipRequest) {
+    skip_slot().lock().push(req);
+}
+
+pub fn drain_skips() -> Vec<SkipRequest> {
+    std::mem::take(&mut *skip_slot().lock())
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum WindowRequest {
+    Raise,
+    Quit,
+}
+
+fn window_slot() -> &'static Mutex<Vec<WindowRequest>> {
+    static SLOT: OnceLock<Mutex<Vec<WindowRequest>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+pub fn request_window(req: WindowRequest) {
+    window_slot().lock().push(req);
+}
+
+pub fn drain_window_requests() -> Vec<WindowRequest> {
+    std::mem::take(&mut *window_slot().lock())
+}
 
 #[derive(Clone)]
 pub struct Player {
     inner: Arc<Mutex<PlayerInner>>,
+    /// When true, souphttpsrc gets the YouTube android User-Agent.
+    android_ua: Arc<AtomicBool>,
 }
 
 struct PlayerInner {
@@ -38,14 +101,27 @@ impl Player {
             })
             .context("create playbin")?;
 
-        // Try to insert equalizer via audio-filter
-        let equalizer = gst::ElementFactory::make("equalizer-10bands")
-            .name("nm-eq")
-            .build()
-            .ok();
+        crate::eq::ensure_registered();
+        let equalizer = gst::ElementFactory::make("nmeq").name("nm-eq").build().ok();
         if let Some(ref eq) = equalizer {
             pipeline.set_property("audio-filter", eq);
+            tracing::info!("playback EQ is nmeq (Rust graphic EQ)");
+        } else {
+            tracing::warn!("nmeq failed to instantiate; playback is unfiltered");
         }
+
+        // YouTube CDN rejects default souphttpsrc UA — stamp android UA when requested.
+        let android_ua = Arc::new(AtomicBool::new(false));
+        let ua_flag_cb = android_ua.clone();
+        pipeline.connect("source-setup", false, move |values| {
+            let Ok(source) = values[1].get::<gst::Element>() else {
+                return None;
+            };
+            if ua_flag_cb.load(Ordering::Relaxed) && source.find_property("user-agent").is_some() {
+                source.set_property("user-agent", crate::ytm::stream::ANDROID_YT_UA);
+            }
+            None
+        });
 
         Ok(Self {
             inner: Arc::new(Mutex::new(PlayerInner {
@@ -62,6 +138,7 @@ impl Player {
                 play_gen: 0,
                 pending_uri: String::new(),
             })),
+            android_ua,
         })
     }
 
@@ -90,9 +167,15 @@ impl Player {
     }
 
     pub fn play_uri(&self, uri: &str) -> Result<()> {
+        self.play_uri_with_options(uri, false)
+    }
+
+    /// Play `uri`. Set `android_ua` for googlevideo streams from yt-dlp's android client.
+    pub fn play_uri_with_options(&self, uri: &str, android_ua: bool) -> Result<()> {
         // State changes block, and a stuck stream can deadlock the GTK thread
         // if they run there while the player mutex is held. A later play
         // supersedes an in-flight one.
+        self.android_ua.store(android_ua, Ordering::Relaxed);
         let (pipeline, volume, gen) = {
             let mut g = self.inner.lock();
             g.play_gen = g.play_gen.wrapping_add(1);
@@ -119,6 +202,8 @@ impl Player {
             pipeline.set_property("uri", current);
             pipeline.set_property("volume", volume);
             let _ = pipeline.set_state(gst::State::Playing);
+            crate::mpris::note_changed();
+            crate::mpris::note_seek_us(0);
         });
         Ok(())
     }
@@ -128,29 +213,35 @@ impl Player {
             .lock()
             .pipeline
             .set_state(gst::State::Playing)?;
+        crate::mpris::note_changed();
         Ok(())
     }
 
     pub fn pause(&self) -> Result<()> {
         self.inner.lock().pipeline.set_state(gst::State::Paused)?;
+        crate::mpris::note_changed();
         Ok(())
     }
 
     pub fn stop(&self) -> Result<()> {
         self.inner.lock().pipeline.set_state(gst::State::Null)?;
+        crate::mpris::note_changed();
         Ok(())
     }
 
     pub fn toggle(&self) -> Result<bool> {
         let g = self.inner.lock();
         let (_, state, _) = g.pipeline.state(gst::ClockTime::ZERO);
-        if state == gst::State::Playing {
+        let playing = if state == gst::State::Playing {
             g.pipeline.set_state(gst::State::Paused)?;
-            Ok(false)
+            false
         } else {
             g.pipeline.set_state(gst::State::Playing)?;
-            Ok(true)
-        }
+            true
+        };
+        drop(g);
+        crate::mpris::note_changed();
+        Ok(playing)
     }
 
     pub fn is_playing(&self) -> bool {
@@ -165,6 +256,8 @@ impl Player {
             gst::SeekFlags::FLUSH | gst::SeekFlags::KEY_UNIT,
             gst::ClockTime::from_seconds(secs),
         )?;
+        drop(g);
+        crate::mpris::note_seek_us((secs as i64) * 1_000_000);
         Ok(())
     }
 
@@ -200,12 +293,17 @@ impl Player {
             return;
         }
         g.eq_bands[band] = db.clamp(-24.0, 12.0);
-        if let Some(ref eq) = g.equalizer {
-            let prop = format!("band{band}");
-            eq.set_property_from_str(&prop, &format!("{}", g.eq_bands[band]));
-            // equalizer-10bands uses gdouble properties band0..band9
-            eq.set_property(&prop, g.eq_bands[band]);
-        }
+        crate::eq::shared_eq()
+            .lock()
+            .set_gain(band, g.eq_bands[band]);
+    }
+
+    pub fn set_eq_bypass(&self, on: bool) {
+        crate::eq::shared_eq().lock().set_bypass(on);
+    }
+
+    pub fn eq_bypass(&self) -> bool {
+        crate::eq::shared_eq().lock().bypass()
     }
 
     pub fn eq_bands(&self) -> [f64; 10] {
@@ -365,4 +463,88 @@ fn self_position_helper(g: &PlayerInner) -> u64 {
         .query_position::<gst::ClockTime>()
         .map(|t| t.seconds())
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn track(id: &str) -> Track {
+        Track {
+            id: id.into(),
+            title: id.into(),
+            ..Track::default()
+        }
+    }
+
+    #[test]
+    fn eos_pauses_podcasts_and_steps_radio() {
+        assert_eq!(eos_action(false, true), EosAction::Pause);
+        assert_eq!(eos_action(true, false), EosAction::NextStation);
+        assert_eq!(eos_action(false, false), EosAction::Advance);
+    }
+
+    #[test]
+    fn radio_wraps_and_eq_insert_still_reaches_eos_and_seek() {
+        let player = Player::new().expect("player");
+        player.set_queue(vec![track("one"), track("two")], 0);
+        assert_eq!(player.next_in_order().unwrap().id, "two");
+        assert_eq!(player.next_in_order().unwrap().id, "one");
+
+        let pipeline = gstreamer::parse::launch(
+            "audiotestsrc num-buffers=12 ! audio/x-raw,format=F32LE,rate=48000,channels=2 ! nmeq ! fakesink",
+        )
+        .expect("nmeq pipeline");
+        pipeline
+            .set_state(gst::State::Playing)
+            .expect("play nmeq");
+        let bus = pipeline.bus().expect("bus");
+        let msg = bus
+            .timed_pop_filtered(
+                gst::ClockTime::from_seconds(5),
+                &[gst::MessageType::Eos, gst::MessageType::Error],
+            )
+            .expect("pipeline produced no message");
+        if let gst::MessageView::Error(err) = msg.view() {
+            panic!("nmeq pipeline: {}", err.error());
+        }
+        let _ = pipeline.set_state(gst::State::Null);
+
+        let path = std::env::temp_dir().join(format!(
+            "nm-seek-{}-{}.wav",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let encode = gstreamer::parse::launch(&format!(
+            "audiotestsrc num-buffers=120 ! audio/x-raw,rate=48000,channels=2 ! wavenc ! filesink location=\"{}\"",
+            path.display()
+        ))
+        .expect("wav pipeline");
+        encode.set_state(gst::State::Playing).expect("encode");
+        let encoded = encode
+            .bus()
+            .expect("encode bus")
+            .timed_pop_filtered(
+                gst::ClockTime::from_seconds(5),
+                &[gst::MessageType::Eos, gst::MessageType::Error],
+            )
+            .expect("encode produced no message");
+        if let gst::MessageView::Error(err) = encoded.view() {
+            panic!("wav encode: {}", err.error());
+        }
+        let _ = encode.set_state(gst::State::Null);
+
+        player
+            .play_uri(&format!("file://{}", path.display()))
+            .expect("play file");
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        player.seek_secs(1).expect("seek through nmeq");
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        let pos = player.position_secs();
+        let _ = std::fs::remove_file(&path);
+        assert!(pos >= 1, "position after seek was {pos}");
+    }
 }
