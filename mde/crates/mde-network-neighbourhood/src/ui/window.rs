@@ -17,6 +17,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use super::activity::ActivityPanel;
+use super::connect_dialog::ConnectDialog;
 use super::connect_status::InlineConnectStatus;
 use super::discovery::DiscoveryPanel;
 use super::settings;
@@ -683,7 +684,7 @@ fn ensure_admin(state: &Rc<RefCell<AppState>>) {
 }
 
 fn open_place(
-    _window: &ApplicationWindow,
+    window: &ApplicationWindow,
     state: &Rc<RefCell<AppState>>,
     id: &str,
     refresh: Rc<dyn Fn()>,
@@ -752,6 +753,38 @@ fn open_place(
         let widgets = connect_widgets.clone();
         let (tx, rx) = std::sync::mpsc::channel::<Result<String, String>>();
 
+        // Modal Connecting dialog (checklist, progress, log, Cancel; diagnosis on failure).
+        let dialog = ConnectDialog::new(window, &place.name, &place.host);
+        dialog.set_on_cancel({
+            let id = id.clone();
+            move || {
+                let _ = dbus::cancel_connect_sync(&id);
+            }
+        });
+        dialog.set_on_retry({
+            let window = window.clone();
+            let state = state.clone();
+            let refresh = refresh.clone();
+            let widgets = connect_widgets.clone();
+            let id = id.clone();
+            move || {
+                state.borrow_mut().connecting.remove(&id);
+                open_place(&window, &state, &id, refresh.clone(), widgets.clone());
+            }
+        });
+        dialog.set_on_edit({
+            let window = window.clone();
+            let place = place.clone();
+            let refresh = refresh.clone();
+            let state = state.clone();
+            let id = id.clone();
+            move || {
+                state.borrow_mut().connecting.remove(&id);
+                wizard::run_edit_credentials(&window, &place, refresh.clone());
+            }
+        });
+        dialog.present();
+
         std::thread::spawn({
             let id = id.clone();
             move || {
@@ -766,6 +799,7 @@ fn open_place(
                     if let Some(w) = widgets.borrow().get(&id) {
                         w.apply(&progress);
                     }
+                    dialog.apply(&progress);
                     state2
                         .borrow_mut()
                         .connects
@@ -786,6 +820,7 @@ fn open_place(
                     if let Some(w) = widgets.borrow().get(&id) {
                         w.apply(&progress);
                     }
+                    dialog.close();
                     state2.borrow_mut().connecting.remove(&id);
                     state2.borrow_mut().connects.insert(id.clone(), progress);
                     if mount::is_mounted(&place_mp) {
@@ -804,11 +839,13 @@ fn open_place(
                     {
                         progress.state = ConnectState::Failed;
                         progress.phrase = format!("Failed — {e}");
+                        progress.diagnosis = crate::diagnose::classify(&e);
                         progress.error = e;
                     }
                     if let Some(w) = widgets.borrow().get(&id) {
                         w.apply(&progress);
                     }
+                    dialog.apply(&progress);
                     state2.borrow_mut().connecting.remove(&id);
                     state2.borrow_mut().connects.insert(id.clone(), progress);
                     refresh2();
@@ -823,6 +860,7 @@ fn open_place(
                     if let Some(w) = widgets.borrow().get(&id) {
                         w.apply(&progress);
                     }
+                    dialog.apply(&progress);
                     state2.borrow_mut().connecting.remove(&id);
                     state2.borrow_mut().connects.insert(id.clone(), progress);
                     refresh2();

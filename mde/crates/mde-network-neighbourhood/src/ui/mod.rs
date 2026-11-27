@@ -1,4 +1,5 @@
 mod activity;
+mod connect_dialog;
 mod connect_status;
 mod discovery;
 mod settings;
