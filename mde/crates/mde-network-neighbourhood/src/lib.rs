@@ -5,6 +5,7 @@ pub mod connect;
 pub mod dbus;
 pub mod diagnose;
 pub mod discovery;
+pub mod keys;
 pub mod media;
 pub mod mount;
 pub mod place;

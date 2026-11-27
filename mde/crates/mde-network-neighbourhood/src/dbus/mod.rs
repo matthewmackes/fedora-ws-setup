@@ -241,6 +241,30 @@ impl NeighbourhoodService {
         serde_json::to_string(&shares).map_err(to_fdo)
     }
 
+    /// Report whether this SSH place already uses a key ("true"/"false").
+    async fn has_ssh_key(&self, id: String) -> zbus::fdo::Result<String> {
+        let cfg = Config::load().map_err(to_fdo)?;
+        let place = cfg
+            .find(&id)
+            .cloned()
+            .ok_or_else(|| zbus::fdo::Error::Failed(format!("unknown place {id}")))?;
+        Ok(crate::keys::has_key(&place).to_string())
+    }
+
+    /// Generate, install and verify a passwordless SSH key for this place.
+    async fn setup_ssh_key(&self, id: String) -> zbus::fdo::Result<String> {
+        let cfg = Config::load().map_err(to_fdo)?;
+        let place = cfg
+            .find(&id)
+            .cloned()
+            .ok_or_else(|| zbus::fdo::Error::Failed(format!("unknown place {id}")))?;
+        run_blocking(move || crate::keys::setup_ssh_key(&place))
+            .await
+            .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?
+            .map_err(to_fdo)?;
+        Ok("ok".into())
+    }
+
     async fn place_status(&self, id: String) -> zbus::fdo::Result<String> {
         let cfg = Config::load().map_err(to_fdo)?;
         let place = cfg
@@ -361,11 +385,11 @@ pub async fn serve_system() -> Result<Connection> {
 fn method_timeout_secs(method: &str) -> u64 {
     match method {
         // Keep the GUI responsive — never sit on List/Ping for the full mount window.
-        "ListPlaces" | "GetSettings" | "DaemonPing" | "PlaceStatus" | "ParseUri"
+        "ListPlaces" | "GetSettings" | "DaemonPing" | "PlaceStatus" | "ParseUri" | "HasSshKey"
         | "ListDiscovered" | "GetDiscoveryStatus" | "GetConnectStatus" => 8,
         "BeginAdminSession" | "SetSettings" | "RemovePlace" | "UnmountPlace"
         | "DisableAutomount" | "UpsertPlace" | "CancelConnect" | "OpenMountLogs" => 30,
-        "MountPlace" | "Discover" | "ListSmbShares" => 90,
+        "MountPlace" | "Discover" | "ListSmbShares" | "SetupSshKey" => 90,
         _ => 30,
     }
 }
@@ -409,7 +433,8 @@ pub fn call_sync(method: &str, body: &str) -> Result<String> {
             })
         }
         "SetSettings" | "RemovePlace" | "MountPlace" | "UnmountPlace" | "DisableAutomount"
-        | "PlaceStatus" | "ParseUri" | "GetConnectStatus" | "CancelConnect" | "OpenMountLogs" => {
+        | "PlaceStatus" | "ParseUri" | "GetConnectStatus" | "CancelConnect" | "OpenMountLogs"
+        | "HasSshKey" | "SetupSshKey" => {
             if matches!(
                 method,
                 "SetSettings" | "RemovePlace" | "UnmountPlace" | "DisableAutomount"
@@ -543,6 +568,14 @@ pub fn cancel_connect_sync(id: &str) -> Result<()> {
 
 pub fn open_mount_logs_sync(id: &str) -> Result<String> {
     call_sync("OpenMountLogs", id)
+}
+
+pub fn has_ssh_key_sync(id: &str) -> Result<bool> {
+    Ok(call_sync("HasSshKey", id)? == "true")
+}
+
+pub fn setup_ssh_key_sync(id: &str) -> Result<()> {
+    call_sync("SetupSshKey", id).map(|_| ())
 }
 
 pub fn list_smb_shares_sync(host: &str, user: &str, pass: &str) -> Result<Vec<String>> {

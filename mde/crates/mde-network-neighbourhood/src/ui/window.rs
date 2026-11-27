@@ -683,6 +683,89 @@ fn ensure_admin(state: &Rc<RefCell<AppState>>) {
     });
 }
 
+thread_local! {
+    /// Places where the user said "Not now" this session; don't nag.
+    static KEY_OFFER_DECLINED: RefCell<std::collections::HashSet<String>> =
+        RefCell::new(std::collections::HashSet::new());
+}
+
+/// After a successful password connect to an SSH place, offer passwordless keys.
+fn offer_key_setup(window: &ApplicationWindow, place: &Place) {
+    if place.protocol != crate::place::Protocol::Ssh
+        || KEY_OFFER_DECLINED.with(|d| d.borrow().contains(&place.id))
+    {
+        return;
+    }
+    let (tx, rx) = std::sync::mpsc::channel::<bool>();
+    let id = place.id.clone();
+    std::thread::spawn(move || {
+        let _ = tx.send(dbus::has_ssh_key_sync(&id).unwrap_or(true));
+    });
+    let window = window.clone();
+    let place = place.clone();
+    glib::timeout_add_local(Duration::from_millis(150), move || match rx.try_recv() {
+        Ok(false) => {
+            ask_key_setup(&window, &place);
+            glib::ControlFlow::Break
+        }
+        Ok(true) | Err(std::sync::mpsc::TryRecvError::Disconnected) => glib::ControlFlow::Break,
+        Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+    });
+}
+
+fn ask_key_setup(window: &ApplicationWindow, place: &Place) {
+    let alert = gtk4::AlertDialog::builder()
+        .modal(true)
+        .message("Set up passwordless access?")
+        .detail(format!(
+            "Connected to {} with a password. Network Neighbourhood can create a \
+             private key for this place and install it on the host, so future \
+             connections need no password.",
+            place.name
+        ))
+        .buttons(["Not now", "Set up keys"])
+        .cancel_button(0)
+        .default_button(1)
+        .build();
+    let window2 = window.clone();
+    let place = place.clone();
+    alert.choose(Some(window), gio::Cancellable::NONE, move |res| {
+        if res.ok() != Some(1) {
+            KEY_OFFER_DECLINED.with(|d| d.borrow_mut().insert(place.id.clone()));
+            return;
+        }
+        let (tx, rx) = std::sync::mpsc::channel::<Result<(), String>>();
+        let id = place.id.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(dbus::setup_ssh_key_sync(&id).map_err(|e| e.to_string()));
+        });
+        let window3 = window2.clone();
+        glib::timeout_add_local(Duration::from_millis(200), move || match rx.try_recv() {
+            Ok(r) => {
+                let (msg, detail) = match r {
+                    Ok(()) => (
+                        "Passwordless access is ready".to_string(),
+                        "A key was created, installed and verified. This place will use it from now on.".to_string(),
+                    ),
+                    Err(e) => (
+                        "Couldn't set up keys".to_string(),
+                        format!("{e}\n\nYour password connection still works."),
+                    ),
+                };
+                gtk4::AlertDialog::builder()
+                    .modal(true)
+                    .message(msg)
+                    .detail(detail)
+                    .build()
+                    .show(Some(&window3));
+                glib::ControlFlow::Break
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+            Err(_) => glib::ControlFlow::Break,
+        });
+    });
+}
+
 fn open_place(
     window: &ApplicationWindow,
     state: &Rc<RefCell<AppState>>,
@@ -750,6 +833,8 @@ fn open_place(
         let state2 = state.clone();
         let refresh2 = refresh.clone();
         let place_mp = place.mount_point();
+        let window2 = window.clone();
+        let place2 = place.clone();
         let widgets = connect_widgets.clone();
         let (tx, rx) = std::sync::mpsc::channel::<Result<String, String>>();
 
@@ -821,6 +906,7 @@ fn open_place(
                         w.apply(&progress);
                     }
                     dialog.close();
+                    offer_key_setup(&window2, &place2);
                     state2.borrow_mut().connecting.remove(&id);
                     state2.borrow_mut().connects.insert(id.clone(), progress);
                     if mount::is_mounted(&place_mp) {
