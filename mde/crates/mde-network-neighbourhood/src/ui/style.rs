@@ -1,15 +1,15 @@
 use gtk4::gdk::Display;
 use gtk4::CssProvider;
-use mde_theme::{Theme, ACCENT_DEFAULT, FONT, FONT_MONO};
+use mde_theme::{Palette, ACCENT_DEFAULT, FONT, FONT_MONO};
 
 pub fn load(density: &str) {
-    let theme = Theme::load();
+    let theme = Palette::load();
     let accent = if theme.accent.is_empty() {
         ACCENT_DEFAULT
     } else {
         theme.accent.as_str()
     };
-    let dark = theme.color_scheme.contains("dark");
+    let dark = theme.dark;
     let (bg, surface, surface2, text, muted, border, card) = if dark {
         (
             "#1c1c1c", "#202020", "#2b2b2b", "#ffffff", "#c5c5c5", "#3a3a3a", "#2c2c2c",

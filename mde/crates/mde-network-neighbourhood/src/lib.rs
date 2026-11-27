@@ -3,6 +3,7 @@
 pub mod config;
 pub mod connect;
 pub mod dbus;
+pub mod diagnose;
 pub mod discovery;
 pub mod media;
 pub mod mount;

@@ -375,6 +375,12 @@ fn mount_sshfs_password(place: &Place) -> Result<()> {
         c
     };
     cmd.stdout(Stdio::null()).stderr(Stdio::piped());
+    tracing::info!(
+        place = %place.id,
+        "exec: {}sshfs -f {remote} {mp} -o {opts}  (password via {})",
+        if sshpass.exists() { "SSHPASS=*** sshpass -e " } else { "" },
+        if sshpass.exists() { "env" } else { "stdin" },
+    );
     let mut child = cmd.spawn().context("spawn sshfs")?;
     if !sshpass.exists() {
         if let Some(mut stdin) = child.stdin.take() {

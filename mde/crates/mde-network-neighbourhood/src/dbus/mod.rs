@@ -8,6 +8,24 @@ use serde_json::json;
 use std::time::Duration;
 use zbus::{connection, interface, Connection};
 
+/// Run blocking work on a plain OS thread and await the result.
+///
+/// zbus drives method handlers on its own executor, not a Tokio runtime, so
+/// `tokio::task::spawn_blocking` panics there ("no reactor running") and the
+/// D-Bus call never gets a reply. A std thread plus a oneshot channel works
+/// under any executor.
+async fn run_blocking<T, F>(f: F) -> Result<T, tokio::sync::oneshot::error::RecvError>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(f());
+    });
+    rx.await
+}
+
 pub struct NeighbourhoodService;
 
 impl NeighbourhoodService {
@@ -83,7 +101,7 @@ impl NeighbourhoodService {
             .cloned()
             .ok_or_else(|| zbus::fdo::Error::Failed(format!("unknown place {id}")))?;
         let place_id = place.id.clone();
-        let (result, log) = tokio::task::spawn_blocking(move || mount::mount_now_with_log(&place))
+        let (result, log) = run_blocking(move || mount::mount_now_with_log(&place))
             .await
             .map_err(|e| zbus::fdo::Error::Failed(format!("mount task join: {e}")))?;
         let mut cfg = Config::load().map_err(to_fdo)?;
@@ -123,7 +141,7 @@ impl NeighbourhoodService {
             .find(&id)
             .cloned()
             .ok_or_else(|| zbus::fdo::Error::Failed(format!("unknown place {id}")))?;
-        tokio::task::spawn_blocking(move || mount::cancel_connect(&place))
+        run_blocking(move || mount::cancel_connect(&place))
             .await
             .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?
             .map_err(to_fdo)
@@ -139,7 +157,7 @@ impl NeighbourhoodService {
             "{}.mount",
             mount::systemd_path_unit(&place.mount_point())
         );
-        let out = tokio::task::spawn_blocking(move || {
+        let out = run_blocking(move || {
             std::process::Command::new("journalctl")
                 .args(["-u", &unit, "-n", "80", "--no-pager"])
                 .output()
@@ -156,7 +174,7 @@ impl NeighbourhoodService {
             .find(&id)
             .cloned()
             .ok_or_else(|| zbus::fdo::Error::Failed(format!("unknown place {id}")))?;
-        tokio::task::spawn_blocking(move || mount::unmount_now(&place))
+        run_blocking(move || mount::unmount_now(&place))
             .await
             .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?
             .map_err(to_fdo)
@@ -168,7 +186,7 @@ impl NeighbourhoodService {
             .find(&id)
             .cloned()
             .ok_or_else(|| zbus::fdo::Error::Failed(format!("unknown place {id}")))?;
-        tokio::task::spawn_blocking(move || mount::disable_automount(&place))
+        run_blocking(move || mount::disable_automount(&place))
             .await
             .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?
             .map_err(to_fdo)
@@ -184,7 +202,7 @@ impl NeighbourhoodService {
     async fn discover(&self) -> zbus::fdo::Result<String> {
         let cfg = Config::load().map_err(to_fdo)?;
         let settings = cfg.settings.clone();
-        let cache = tokio::task::spawn_blocking(move || {
+        let cache = run_blocking(move || {
             discovery::cache::run_scan_and_store(&settings)
         })
         .await
@@ -214,7 +232,7 @@ impl NeighbourhoodService {
         username: String,
         password: String,
     ) -> zbus::fdo::Result<String> {
-        let shares = tokio::task::spawn_blocking(move || {
+        let shares = run_blocking(move || {
             mount::smb_list_shares(&host, &username, &password)
         })
         .await

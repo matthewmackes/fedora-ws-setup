@@ -19,6 +19,7 @@ members = [
     "mde-setup-ui",
     "smithay-drm-extras",
     "mde-music",
+    "mde-network-neighbourhood",
 ]
 default-members = [
     "mde-config",

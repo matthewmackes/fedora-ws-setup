@@ -42,6 +42,9 @@ pub struct ConnectProgress {
     pub username: String,
     pub auth_method: String,
     pub error: String,
+    /// Plain-language diagnosis of `error` (set on failure).
+    #[serde(default)]
+    pub diagnosis: crate::diagnose::Diagnosis,
     pub updated_at: u64,
 }
 
@@ -57,6 +60,7 @@ impl ConnectProgress {
             username: String::new(),
             auth_method: String::new(),
             error: String::new(),
+            diagnosis: Default::default(),
             updated_at: now_secs(),
         }
     }
@@ -155,6 +159,7 @@ impl ProgressReporter {
             self.mark_cancelled();
             return Err(Cancelled);
         }
+        tracing::info!(place = %self.progress.id, step = label, detail = %redact(detail), "connect step");
         self.progress.steps.push(ConnectStep {
             label: label.to_string(),
             detail: redact(detail),
@@ -182,6 +187,15 @@ impl ProgressReporter {
         self.progress.state = ConnectState::Failed;
         self.progress.phrase = format!("Failed — {label}");
         self.progress.error = redact(detail);
+        self.progress.diagnosis = crate::diagnose::classify(detail);
+        tracing::error!(
+            place = %self.progress.id,
+            step = label,
+            kind = ?self.progress.diagnosis.kind,
+            cause = %self.progress.diagnosis.cause,
+            detail = %redact(detail),
+            "connect failed"
+        );
         self.progress.updated_at = now_secs();
         self.progress.save();
         end_connect(&self.progress.id);
@@ -192,6 +206,8 @@ impl ProgressReporter {
         self.progress.phrase = phrase.to_string();
         self.progress.fraction = 1.0;
         self.progress.error.clear();
+        self.progress.diagnosis = Default::default();
+        tracing::info!(place = %self.progress.id, phrase, "connect succeeded");
         self.progress.updated_at = now_secs();
         self.progress.save();
         end_connect(&self.progress.id);
