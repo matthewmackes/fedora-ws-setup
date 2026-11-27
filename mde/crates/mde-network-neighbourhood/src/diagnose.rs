@@ -62,6 +62,10 @@ pub fn classify(raw: &str) -> Diagnosis {
         || has("permission denied")
             && (has("password") || has("sshfs") || has("ssh"))
         || has("authentication failed")
+        || has("wrong username or password")
+        || has("401") && has("http")
+        || has("403") && has("http")
+        || has("unauthorized")
         || has("logon failure")
         || has("status_logon_failure")
         || has("mount error(13)")
@@ -182,6 +186,18 @@ mod tests {
         let x = classify("sshfs exited: mm@172.20.0.2: Permission denied (publickey,password).");
         assert_eq!(x.kind, ErrorKind::Auth);
         assert_eq!(x.auto_fix, Some(AutoFix::ReenterPassword));
+    }
+
+    #[test]
+    fn media_server_credentials() {
+        assert_eq!(
+            classify("music server error: Wrong username or password").kind,
+            ErrorKind::Auth
+        );
+        assert_eq!(
+            classify("Jellyfin request failed: http status: 401").kind,
+            ErrorKind::Auth
+        );
     }
 
     #[test]

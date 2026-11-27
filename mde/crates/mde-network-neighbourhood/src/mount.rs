@@ -443,16 +443,54 @@ fn mount_media_fuse(place: &Place) -> Result<()> {
     }
     // Spawn daemon helper: network-neighbourhoodd --mediafs <id> <mountpoint>
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("network-neighbourhoodd"));
-    Command::new(exe)
+    tracing::info!(place = %place.id, "exec: {} --mediafs {} {mp}", exe.display(), place.id);
+    let mut child = Command::new(exe)
         .args(["--mediafs", &place.id, &mp])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .context("spawn mediafs")?;
-    std::thread::sleep(std::time::Duration::from_millis(400));
-    sync_drive_letter(place)?;
-    Ok(())
+
+    // Wait for the FUSE mount to appear, or for the helper to explain why it exited.
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(60);
+    loop {
+        if crate::connect::is_cancelled(&place.id) {
+            let _ = child.kill();
+            let _ = child.wait();
+            bail!("connect cancelled");
+        }
+        if is_mounted(&mp) {
+            std::mem::forget(child);
+            sync_drive_letter(place)?;
+            return Ok(());
+        }
+        if let Some(status) = child.try_wait()? {
+            let err = child
+                .stderr
+                .take()
+                .and_then(|mut s| {
+                    let mut buf = String::new();
+                    std::io::Read::read_to_string(&mut s, &mut buf).ok()?;
+                    Some(buf)
+                })
+                .unwrap_or_default();
+            bail!(
+                "media mount helper exited ({status}): {}",
+                err.trim().chars().take(400).collect::<String>()
+            );
+        }
+        if start.elapsed() > timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            bail!(
+                "media server timed out after {}s while listing the library",
+                timeout.as_secs()
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
 }
 
 /// systemd-escape -p equivalent for a mount path.

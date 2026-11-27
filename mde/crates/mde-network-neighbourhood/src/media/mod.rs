@@ -1,5 +1,6 @@
 mod airsonic;
 mod jellyfin;
+pub mod views;
 
 use crate::config::{read_password, Config};
 use crate::place::{Place, Protocol};
@@ -33,9 +34,13 @@ struct MediaFs {
 impl MediaFs {
     fn build(place: Place) -> Result<Self> {
         let password = read_password(&place).unwrap_or_default();
-        let entries = match place.protocol {
-            Protocol::Video => jellyfin::list_libraries(&place, &password)?,
-            Protocol::Audio => airsonic::list_libraries(&place, &password)?,
+        let top = match place.protocol {
+            Protocol::Video => {
+                views::video_views(&jellyfin::list_entries(&place, &password)?)
+            }
+            Protocol::Audio => {
+                views::audio_views(&airsonic::list_entries(&place, &password)?)
+            }
             _ => bail!("not a media place"),
         };
 
@@ -53,22 +58,8 @@ impl MediaFs {
             size: 64,
         });
         root_children.push(open_ino);
-
-        for lib in entries {
-            let mut child_inos = Vec::new();
-            for item in lib.items {
-                let ino = fs.alloc(Node::File {
-                    name: sanitize_name(&item.name),
-                    url: item.stream_url,
-                    size: item.size.unwrap_or(0),
-                });
-                child_inos.push(ino);
-            }
-            let dino = fs.alloc(Node::Dir {
-                name: sanitize_name(&lib.name),
-                children: child_inos,
-            });
-            root_children.push(dino);
+        for dir in &top {
+            root_children.push(fs.add_view(dir));
         }
 
         fs.inodes.insert(
@@ -79,6 +70,25 @@ impl MediaFs {
             },
         );
         Ok(fs)
+    }
+
+    /// Turn a view tree into inodes, returning the directory's inode.
+    fn add_view(&mut self, dir: &views::ViewDir) -> u64 {
+        let mut children = Vec::new();
+        for d in &dir.dirs {
+            children.push(self.add_view(d));
+        }
+        for f in &dir.files {
+            children.push(self.alloc(Node::File {
+                name: sanitize_name(&f.name),
+                url: f.url.clone(),
+                size: f.size,
+            }));
+        }
+        self.alloc(Node::Dir {
+            name: sanitize_name(&dir.name),
+            children,
+        })
     }
 
     fn place_url(&self) -> String {
@@ -267,17 +277,6 @@ fn sanitize_name(s: &str) -> String {
         out = "item".into();
     }
     out
-}
-
-pub struct MediaItem {
-    pub name: String,
-    pub stream_url: String,
-    pub size: Option<u64>,
-}
-
-pub struct MediaLibrary {
-    pub name: String,
-    pub items: Vec<MediaItem>,
 }
 
 /// Mount a Video/Audio place with FUSE (blocking).
