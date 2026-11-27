@@ -38,17 +38,20 @@ fn main() -> iced::Result {
     let spec = console::resolve_arg(arg.as_deref());
     let icon = resolve_window_icon(&spec);
 
+    let boot_cfg = mde_config::MdeConfig::load().unwrap_or_default();
+    let ui = mde_theme::ui_font(&boot_cfg.active().theme).to_string();
+    let mono = mde_theme::mono_font(&boot_cfg.active().theme).to_string();
     let mut app = iced::application(Mmc::window_title, Mmc::update, Mmc::view)
         .theme(Mmc::theme)
         .subscription(Mmc::subscription)
-        .default_font(iced::Font::with_name(mde_theme::FONT))
+        .default_font(iced::Font::with_name(Box::leak(ui.clone().into_boxed_str())))
         .window(iced::window::Settings {
             size: iced::Size::new(1180.0, 760.0),
             decorations: true,
             icon,
             ..Default::default()
         });
-    for bytes in mde_theme::font_bytes() {
+    for bytes in mde_theme::font_bytes_selected(&ui, &mono) {
         app = app.font(bytes);
     }
     app.run_with(move || Mmc::new(spec))

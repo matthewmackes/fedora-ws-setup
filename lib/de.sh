@@ -373,3 +373,58 @@ EOF
   WS_APPLIED=$((WS_APPLIED + 1))
   info "Saved desktop state: de=$WS_DE"
 }
+
+# Uninstall a desktop/experience without requiring a switch-to target.
+# WS_UNINSTALL_DE: xfce | mde | pipedal | all
+de_uninstall_current() {
+  local target="${WS_UNINSTALL_DE:-}"
+  [[ -n "$target" ]] || return 0
+  case "$target" in
+    xfce|mde|pipedal|all) ;;
+    *)
+      error "Unknown uninstall_de target: $target"
+      WS_FAILURES+=("uninstall_de:$target")
+      WS_FAILED=$((WS_FAILED + 1))
+      return 0
+      ;;
+  esac
+  info "Uninstall desktop experience: $target"
+  if declare -F ui_progress_info >/dev/null 2>&1; then
+    ui_progress_info "Uninstalling desktop experience: $target"
+  fi
+  if [[ "$target" == "mde" || "$target" == "all" ]]; then
+    if [[ -x "$WS_MDE_ROOT/uninstall.sh" ]]; then
+      if is_dry_run; then
+        run_or_skip "mde-uninstall" "$WS_MDE_ROOT/uninstall.sh" --dry-run "${WS_TARGET_USERS[@]+"${WS_TARGET_USERS[@]}"}"
+      else
+        run_or_skip "mde-uninstall" "$WS_MDE_ROOT/uninstall.sh" "${WS_TARGET_USERS[@]+"${WS_TARGET_USERS[@]}"}"
+      fi
+    else
+      local pkgs=()
+      mapfile -t pkgs < <(de_installed_remove_list mde)
+      de_protect_keep
+      if ((${#pkgs[@]} > 0)); then
+        run_or_skip "remove-mde" dnf_yes remove "${pkgs[@]}"
+      fi
+    fi
+  fi
+  if [[ "$target" == "xfce" || "$target" == "all" ]]; then
+    local pkgs=()
+    mapfile -t pkgs < <(de_installed_remove_list xfce)
+    de_protect_keep
+    if ((${#pkgs[@]} > 0)); then
+      info "Removing XFCE packages: ${pkgs[*]}"
+      run_or_skip "remove-xfce" dnf_yes remove "${pkgs[@]}"
+    else
+      info "No XFCE packages installed to remove"
+    fi
+  fi
+  if [[ "$target" == "pipedal" || "$target" == "all" ]]; then
+    if declare -F pipedal_remove_service >/dev/null 2>&1; then
+      if de_pipedal_installed || [[ "$target" == "pipedal" ]]; then
+        pipedal_remove_service
+      fi
+    fi
+  fi
+  run_or_skip "autoremove-after-de-uninstall" dnf_yes autoremove
+}

@@ -9,7 +9,11 @@
 
 WS_CATALOG_DIR="${WS_CATALOG_DIR:-$WS_ROOT/catalog}"
 WS_SELECTED_ITEMS=()
+WS_REMOVE_ITEMS=()
+WS_UNINSTALL_DE="${WS_UNINSTALL_DE:-}"
+WS_APPLIED_FILE="${WS_APPLIED_FILE:-${WS_STATE_DIR:-/var/lib/fedora-ws-setup}/applied.json}"
 declare -A WS_CATALOG_META=()
+declare -A WS_APPLIED_IDS=()
 
 # --- config recipe functions referenced by catalog -----------------------
 
@@ -451,6 +455,254 @@ cfg_google_fonts() {
   WS_APPLIED=$((WS_APPLIED + 1))
 }
 
+# --- config undo helpers (best-effort) -----------------------------------
+
+cfg_firefox_policy_undo() {
+  rm -f /etc/firefox/policies/policies.json
+  rmdir /etc/firefox/policies 2>/dev/null || true
+}
+
+cfg_keyboard_touchpad_undo() {
+  rm -f /etc/X11/xorg.conf.d/40-libinput-tap.conf
+}
+
+cfg_qt_match_gtk_undo() {
+  rm -f /etc/environment.d/99-ws-qt.conf
+}
+
+cfg_docker_group_undo() {
+  systemctl disable --now docker.service >/dev/null 2>&1 || true
+}
+
+cfg_libvirt_group_undo() {
+  systemctl disable --now libvirtd.service >/dev/null 2>&1 || true
+}
+
+cfg_vscode_inotify_undo() {
+  rm -f /etc/sysctl.d/99-ws-inotify.conf
+  sysctl --system >/dev/null 2>&1 || true
+}
+
+cfg_dnf_automatic_security_undo() {
+  systemctl disable --now dnf5-automatic.timer >/dev/null 2>&1 || true
+  systemctl disable --now dnf-automatic.timer >/dev/null 2>&1 || true
+}
+
+cfg_sysctl_harden_undo() {
+  rm -f /etc/sysctl.d/99-ws-harden.conf
+  sysctl --system >/dev/null 2>&1 || true
+}
+
+cfg_ssh_fail2ban_undo() {
+  systemctl disable --now fail2ban >/dev/null 2>&1 || true
+}
+
+cfg_power_tuned_undo() {
+  systemctl disable --now tuned >/dev/null 2>&1 || true
+  systemctl disable --now thermald >/dev/null 2>&1 || true
+}
+
+cfg_fingerprint_undo() {
+  systemctl disable --now fprintd >/dev/null 2>&1 || true
+}
+
+cfg_flathub_full_undo() {
+  if flatpak remotes --system 2>/dev/null | grep -qw flathub; then
+    flatpak remote-delete --system flathub >/dev/null 2>&1 || true
+  fi
+}
+
+cfg_print_enable_undo() {
+  systemctl disable --now cups.service >/dev/null 2>&1 || true
+}
+
+cfg_power_profiles_undo() {
+  systemctl disable --now tuned-ppd.service >/dev/null 2>&1 || true
+  systemctl disable --now power-profiles-daemon.service >/dev/null 2>&1 || true
+}
+
+cfg_bt_audio_undo() {
+  systemctl disable --now bluetooth.service >/dev/null 2>&1 || true
+}
+
+cfg_sshd_undo() {
+  systemctl disable --now sshd.service >/dev/null 2>&1 || true
+}
+
+cfg_avahi_undo() {
+  systemctl disable --now avahi-daemon.service >/dev/null 2>&1 || true
+}
+
+cfg_google_fonts_undo() {
+  rm -rf /usr/share/fonts/google
+  fc-cache -f >/dev/null 2>&1 || true
+}
+
+cfg_reaper_undo() {
+  if [[ -x /opt/REAPER/install-reaper.sh ]]; then
+    sh /opt/REAPER/install-reaper.sh --uninstall --quiet >/dev/null 2>&1 || true
+  fi
+  rm -rf /opt/REAPER
+  rm -f /usr/local/bin/reaper /usr/share/applications/cockos-reaper.desktop 2>/dev/null || true
+}
+
+cfg_reaper_lv2_path_undo() {
+  local u home ini
+  for u in "${WS_TARGET_USERS[@]+"${WS_TARGET_USERS[@]}"}"; do
+    home="$(getent passwd "$u" | cut -d: -f6)"
+    ini="$home/.config/REAPER/reaper.ini"
+    [[ -f "$ini" ]] || continue
+    sed -i '/^lv2path_linux=/d' "$ini" 2>/dev/null || true
+  done
+}
+
+cfg_audio_realtime_undo() {
+  true
+}
+
+cfg_network_neighbourhood_undo() {
+  local uninstaller="$WS_ROOT/mde/data/network-neighbourhood/uninstall.sh"
+  if [[ -x "$uninstaller" ]]; then
+    bash "$uninstaller" || true
+  elif [[ -f "$uninstaller" ]]; then
+    bash "$uninstaller" || true
+  else
+    warn "Network Neighbourhood uninstall helper missing"
+  fi
+}
+
+cfg_vscode_repo_undo() {
+  true
+}
+
+cfg_edge_repo_undo() {
+  true
+}
+
+cfg_chrome_repo_undo() {
+  true
+}
+
+cfg_dvd_playback_undo() {
+  true
+}
+
+cfg_backup_stack_undo() {
+  true
+}
+
+cfg_audinux_repo_undo() {
+  true
+}
+
+# --- applied catalog state -----------------------------------------------
+
+catalog_applied_load() {
+  WS_APPLIED_IDS=()
+  [[ -f "$WS_APPLIED_FILE" ]] || return 0
+  local ids
+  ids="$(python3 - "$WS_APPLIED_FILE" <<'PY'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    data = {}
+items = data.get("items") or {}
+for key in items:
+    print(key)
+PY
+)" || return 0
+  local id
+  while IFS= read -r id; do
+    [[ -n "$id" ]] || continue
+    WS_APPLIED_IDS["$id"]=1
+  done <<<"$ids"
+}
+
+catalog_applied_save() {
+  if is_dry_run; then
+    info "DRY-RUN: write $WS_APPLIED_FILE (${#WS_APPLIED_IDS[@]} ids)"
+    return 0
+  fi
+  mkdir -p "$(dirname "$WS_APPLIED_FILE")"
+  local keys=()
+  local k
+  for k in "${!WS_APPLIED_IDS[@]}"; do
+    keys+=("$k")
+  done
+  python3 - "$WS_APPLIED_FILE" "${keys[@]}" <<'PY'
+import json, pathlib, sys, datetime
+dest = pathlib.Path(sys.argv[1])
+ids = sys.argv[2:]
+now = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+prev = {}
+if dest.is_file():
+    try:
+        prev = (json.loads(dest.read_text(encoding="utf-8")).get("items") or {})
+    except Exception:
+        prev = {}
+items = {}
+for i in ids:
+    items[i] = prev.get(i) or {"ts": now}
+    if "ts" not in items[i]:
+        items[i]["ts"] = now
+dest.write_text(json.dumps({"items": items}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+}
+
+catalog_applied_mark() {
+  local id="$1"
+  [[ -n "$id" ]] || return 0
+  WS_APPLIED_IDS["$id"]=1
+  catalog_applied_save
+}
+
+catalog_applied_unmark() {
+  local id="$1"
+  [[ -n "$id" ]] || return 0
+  unset "WS_APPLIED_IDS[$id]"
+  catalog_applied_save
+}
+
+catalog_cfg_present() {
+  local fn="$1"
+  case "$fn" in
+    cfg_firefox_policy) [[ -f /etc/firefox/policies/policies.json ]] ;;
+    cfg_keyboard_touchpad) [[ -f /etc/X11/xorg.conf.d/40-libinput-tap.conf ]] ;;
+    cfg_qt_match_gtk) [[ -f /etc/environment.d/99-ws-qt.conf ]] ;;
+    cfg_docker_group) pkg_installed moby-engine || systemctl is-enabled docker.service >/dev/null 2>&1 ;;
+    cfg_libvirt_group) systemctl is-enabled libvirtd.service >/dev/null 2>&1 ;;
+    cfg_vscode_inotify) [[ -f /etc/sysctl.d/99-ws-inotify.conf ]] ;;
+    cfg_dnf_automatic_security)
+      systemctl is-enabled dnf5-automatic.timer >/dev/null 2>&1 \
+        || systemctl is-enabled dnf-automatic.timer >/dev/null 2>&1
+      ;;
+    cfg_sysctl_harden) [[ -f /etc/sysctl.d/99-ws-harden.conf ]] ;;
+    cfg_ssh_fail2ban) systemctl is-enabled fail2ban >/dev/null 2>&1 || pkg_installed fail2ban ;;
+    cfg_power_tuned) systemctl is-enabled tuned >/dev/null 2>&1 || pkg_installed tuned ;;
+    cfg_fingerprint) systemctl is-enabled fprintd >/dev/null 2>&1 || pkg_installed fprintd ;;
+    cfg_flathub_full) flatpak remotes --system 2>/dev/null | grep -qw flathub ;;
+    cfg_print_enable) systemctl is-enabled cups.service >/dev/null 2>&1 || pkg_installed cups ;;
+    cfg_power_profiles)
+      pkg_installed tuned-ppd || pkg_installed power-profiles-daemon \
+        || systemctl is-enabled tuned-ppd.service >/dev/null 2>&1 \
+        || systemctl is-enabled power-profiles-daemon.service >/dev/null 2>&1
+      ;;
+    cfg_bt_audio) pkg_installed bluez || systemctl is-enabled bluetooth.service >/dev/null 2>&1 ;;
+    cfg_sshd) systemctl is-enabled sshd.service >/dev/null 2>&1 || pkg_installed openssh-server ;;
+    cfg_avahi) systemctl is-enabled avahi-daemon.service >/dev/null 2>&1 || pkg_installed avahi ;;
+    cfg_google_fonts) [[ -d /usr/share/fonts/google ]] && [[ -n "$(ls -A /usr/share/fonts/google 2>/dev/null)" ]] ;;
+    cfg_reaper) [[ -x /opt/REAPER/reaper ]] ;;
+    cfg_reaper_lv2_path) return 1 ;;
+    cfg_audio_realtime) pkg_installed realtime-setup ;;
+    cfg_network_neighbourhood) command -v mde-neighbourhood >/dev/null 2>&1 || pkg_installed fuse-sshfs ;;
+    cfg_dvd_playback) pkg_installed libdvdcss ;;
+    cfg_vscode_repo|cfg_edge_repo|cfg_chrome_repo|cfg_audinux_repo|cfg_backup_stack) return 1 ;;
+    *) return 1 ;;
+  esac
+}
+
 # --- catalog IO ----------------------------------------------------------
 
 catalog_files() {
@@ -529,7 +781,7 @@ catalog_item_available() {
   esac
 }
 
-catalog_item_installed() {
+catalog_payload_probe() {
   local kind="$1" payload="$2"
   case "$kind" in
     rpm)
@@ -542,8 +794,71 @@ catalog_item_installed() {
     flatpak)
       flatpak_installed "$payload"
       ;;
+    config)
+      catalog_cfg_present "$payload"
+      ;;
+    copr)
+      local pkgs
+      pkgs="$(echo "$payload" | cut -d' ' -f2-)"
+      local p
+      for p in $pkgs; do
+        pkg_installed "$p" || return 1
+      done
+      return 0
+      ;;
+    repo)
+      local rest first
+      first="$(echo "$payload" | awk '{print $1}')"
+      rest="$(echo "$payload" | cut -d' ' -f2-)"
+      if declare -F "$first" >/dev/null 2>&1; then
+        local tok
+        for tok in $rest; do
+          if declare -F "$tok" >/dev/null 2>&1; then
+            catalog_cfg_present "$tok" && return 0
+          elif [[ "$tok" == *.* && "$tok" != */* ]]; then
+            flatpak_installed "$tok" && return 0
+          else
+            pkg_installed "$tok" && return 0
+          fi
+        done
+        return 1
+      fi
+      local p
+      for p in $rest; do
+        pkg_installed "$p" || return 1
+      done
+      return 0
+      ;;
+    mix)
+      local tok any=0
+      for tok in $payload; do
+        if declare -F "$tok" >/dev/null 2>&1; then
+          if catalog_cfg_present "$tok"; then any=1; else return 1; fi
+        elif [[ "$tok" == *.* && "$tok" != */* ]]; then
+          if flatpak_installed "$tok"; then any=1; else return 1; fi
+        else
+          if pkg_installed "$tok"; then any=1; else return 1; fi
+        fi
+      done
+      (( any == 1 ))
+      ;;
     *) return 1 ;;
   esac
+}
+
+# True when applied-state or heuristic probe says the item is present.
+catalog_item_installed() {
+  local kind="$1" payload="$2" id="${3:-}"
+  if [[ -n "$id" && -n "${WS_APPLIED_IDS[$id]:-}" ]]; then
+    return 0
+  fi
+  catalog_payload_probe "$kind" "$payload"
+}
+
+catalog_item_present_id() {
+  local id="$1"
+  catalog_lookup "$id" || return 1
+  catalog_item_installed "$C_KIND" "$C_PAYLOAD" "$C_ID"
 }
 
 catalog_category_title() {
@@ -562,23 +877,34 @@ catalog_category_title() {
 }
 
 catalog_load_checklist_args() {
-  # Prints checklist triples (tag, label, ON/OFF) for a conf file on stdout.
+  # Prints checklist quads (tag, label, ON/OFF, PRESENT/ABSENT) for a conf file.
+  # Defaults: present → ON [keep]; recommended absent → ON [install]; else OFF (leave).
   local file="$1"
-  local line status label
+  local line status label present=0
+  catalog_applied_load
   while IFS= read -r line || [[ -n "$line" ]]; do
     catalog_parse_line "$line" || continue
     catalog_guard_ok "$C_GUARD" || continue
     catalog_de_ok "$C_DE" || continue
     catalog_item_available "$C_KIND" "$C_PAYLOAD" || continue
-    status="OFF"
-    case "$(basename "$file")" in
-      00-recommended.conf|00-recommended-pipedal.conf) status="ON" ;;
-    esac
-    label="$C_LABEL"
-    if catalog_item_installed "$C_KIND" "$C_PAYLOAD"; then
-      label="$C_LABEL [installed]"
+    present=0
+    if catalog_item_installed "$C_KIND" "$C_PAYLOAD" "$C_ID"; then
+      present=1
     fi
-    printf '%s\n%s\n%s\n' "$C_ID" "$label" "$status"
+    status="OFF"
+    label="$C_LABEL"
+    if (( present == 1 )); then
+      status="ON"
+      label="$C_LABEL [keep]"
+    else
+      case "$(basename "$file")" in
+        00-recommended.conf|00-recommended-pipedal.conf)
+          status="ON"
+          label="$C_LABEL [install]"
+          ;;
+      esac
+    fi
+    printf '%s\n%s\n%s\n%s\n' "$C_ID" "$label" "$status" "$([[ $present -eq 1 ]] && echo PRESENT || echo ABSENT)"
   done < "$file"
 }
 
@@ -612,6 +938,10 @@ catalog_apply_item() {
     return 0
   fi
   info "Catalog apply: $C_ID ($C_KIND) — $C_LABEL"
+  if declare -F ui_progress_item >/dev/null 2>&1; then
+    ui_progress_item apply "$C_ID" "$C_LABEL"
+  fi
+  local before_failed=$WS_FAILED
   case "$C_KIND" in
     rpm)
       # shellcheck disable=SC2086
@@ -666,10 +996,233 @@ catalog_apply_item() {
       WS_FAILED=$((WS_FAILED + 1))
       ;;
   esac
+  local ok=1
+  if (( WS_FAILED == before_failed )); then
+    catalog_applied_mark "$C_ID"
+  else
+    ok=0
+  fi
+  if declare -F ui_progress_item_done >/dev/null 2>&1; then
+    ui_progress_item_done "$C_ID" "$ok"
+  fi
+}
+
+# --- remove / keep-list / refcount ---------------------------------------
+
+catalog_keep_pkgs() {
+  local p
+  for p in "${BASE_KEEP_APPS[@]+"${BASE_KEEP_APPS[@]}"}"; do printf '%s\n' "$p"; done
+  for p in "${BASE_PLUMBING[@]+"${BASE_PLUMBING[@]}"}"; do printf '%s\n' "$p"; done
+  for p in "${BASE_THEME_DEPS[@]+"${BASE_THEME_DEPS[@]}"}"; do printf '%s\n' "$p"; done
+  for p in "${BASE_CODECS[@]+"${BASE_CODECS[@]}"}"; do printf '%s\n' "$p"; done
+  # Session-critical stack — never stripped by catalog remove.
+  printf '%s\n' \
+    pipewire pipewire-pulseaudio pipewire-alsa pipewire-jack-audio-connection-kit \
+    wireplumber bluez NetworkManager NetworkManager-wifi \
+    mesa-dri-drivers mesa-vulkan-drivers \
+    labwc seatd greetd
+  # Protect the desktop we are installing/keeping unless uninstalling it.
+  if [[ "${WS_UNINSTALL_DE:-}" != "xfce" && "${WS_UNINSTALL_DE:-}" != "all" ]]; then
+    de_pkg_list xfce
+  fi
+  if [[ "${WS_UNINSTALL_DE:-}" != "mde" && "${WS_UNINSTALL_DE:-}" != "all" ]]; then
+    de_pkg_list mde
+  fi
+  if [[ "${WS_DE:-xfce}" != "pipedal" ]]; then
+    de_pkg_list display
+  fi
+}
+
+catalog_id_in_list() {
+  local needle="$1"; shift
+  local x
+  for x in "$@"; do
+    [[ "$x" == "$needle" ]] && return 0
+  done
+  return 1
+}
+
+# Emit rpm package names referenced by a catalog payload (best-effort).
+catalog_payload_rpms() {
+  local kind="$1" payload="$2"
+  case "$kind" in
+    rpm)
+      # shellcheck disable=SC2086
+      printf '%s\n' $payload
+      ;;
+    copr)
+      echo "$payload" | cut -d' ' -f2- | tr ' ' '\n'
+      ;;
+    repo)
+      echo "$payload" | cut -d' ' -f2- | tr ' ' '\n' | while read -r tok; do
+        [[ -n "$tok" ]] || continue
+        declare -F "$tok" >/dev/null 2>&1 && continue
+        [[ "$tok" == *.* && "$tok" != */* ]] && continue
+        printf '%s\n' "$tok"
+      done
+      ;;
+    mix)
+      local tok
+      for tok in $payload; do
+        declare -F "$tok" >/dev/null 2>&1 && continue
+        [[ "$tok" == *.* && "$tok" != */* ]] && continue
+        printf '%s\n' "$tok"
+      done
+      ;;
+    config)
+      case "$payload" in
+        cfg_bt_audio) printf '%s\n' bluez blueman pipewire pipewire-pulseaudio wireplumber ;;
+        cfg_sshd) printf '%s\n' openssh-server ;;
+        cfg_avahi) printf '%s\n' avahi ;;
+        cfg_power_profiles) printf '%s\n' tuned-ppd power-profiles-daemon ;;
+        cfg_dvd_playback) printf '%s\n' libdvdcss rpmfusion-free-release-tainted ;;
+        cfg_audio_realtime) printf '%s\n' realtime-setup pipewire-jack-audio-connection-kit qpwgraph ;;
+        cfg_dnf_automatic_security) printf '%s\n' dnf5-plugin-automatic dnf-automatic ;;
+        cfg_ssh_fail2ban) printf '%s\n' fail2ban ;;
+      esac
+      ;;
+  esac
+}
+
+catalog_payload_flatpaks() {
+  local kind="$1" payload="$2"
+  case "$kind" in
+    flatpak) printf '%s\n' "$payload" ;;
+    mix)
+      local tok
+      for tok in $payload; do
+        if [[ "$tok" == *.* && "$tok" != */* ]] && ! declare -F "$tok" >/dev/null 2>&1; then
+          printf '%s\n' "$tok"
+        fi
+      done
+      ;;
+  esac
+}
+
+catalog_wanted_pkgs() {
+  # Packages still wanted by install picks + kept present items + base keep-list.
+  local id
+  catalog_keep_pkgs
+  for id in "${WS_SELECTED_ITEMS[@]+"${WS_SELECTED_ITEMS[@]}"}"; do
+    catalog_lookup "$id" || continue
+    catalog_payload_rpms "$C_KIND" "$C_PAYLOAD"
+  done
+  # Kept: present and not queued for remove
+  local f line
+  for f in $(catalog_files); do
+    catalog_visible_file "$f" || continue
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      catalog_parse_line "$line" || continue
+      catalog_guard_ok "$C_GUARD" || continue
+      catalog_de_ok "$C_DE" || continue
+      catalog_id_in_list "$C_ID" "${WS_REMOVE_ITEMS[@]+"${WS_REMOVE_ITEMS[@]}"}" && continue
+      catalog_id_in_list "$C_ID" "${WS_SELECTED_ITEMS[@]+"${WS_SELECTED_ITEMS[@]}"}" && continue
+      if catalog_item_installed "$C_KIND" "$C_PAYLOAD" "$C_ID"; then
+        catalog_payload_rpms "$C_KIND" "$C_PAYLOAD"
+      fi
+    done < "$f"
+  done
+}
+
+catalog_remove_item() {
+  local id="$1"
+  if ! catalog_lookup "$id"; then
+    error "Unknown catalog id: $id"
+    WS_FAILURES+=("remove:$id")
+    WS_FAILED=$((WS_FAILED + 1))
+    return 0
+  fi
+  local rid="$C_ID" rkind="$C_KIND" rpayload="$C_PAYLOAD" rlabel="$C_LABEL"
+  info "Catalog remove: $rid ($rkind) — $rlabel"
+  if declare -F ui_progress_item >/dev/null 2>&1; then
+    ui_progress_item remove "$rid" "$rlabel"
+  fi
+  local before_failed=$WS_FAILED
+  local wanted
+  wanted="$(catalog_wanted_pkgs | sort -u)"
+  local pkg_candidates=() flat_candidates=()
+  local p
+  while IFS= read -r p; do
+    [[ -n "$p" ]] || continue
+    pkg_candidates+=("$p")
+  done < <(catalog_payload_rpms "$rkind" "$rpayload")
+  while IFS= read -r p; do
+    [[ -n "$p" ]] || continue
+    flat_candidates+=("$p")
+  done < <(catalog_payload_flatpaks "$rkind" "$rpayload")
+
+  local to_remove=()
+  for p in "${pkg_candidates[@]+"${pkg_candidates[@]}"}"; do
+    if printf '%s\n' "$wanted" | grep -qxF "$p"; then
+      info "Keep shared package: $p (still wanted)"
+      continue
+    fi
+    to_remove+=("$p")
+  done
+  if ((${#to_remove[@]} > 0)); then
+    remove_pkgs "remove:$rid" "${to_remove[@]}"
+  fi
+  for p in "${flat_candidates[@]+"${flat_candidates[@]}"}"; do
+    remove_flatpak "$p"
+  done
+
+  case "$rkind" in
+    config)
+      undo_config "$rpayload"
+      ;;
+    mix)
+      local tok
+      for tok in $rpayload; do
+        if declare -F "$tok" >/dev/null 2>&1; then
+          undo_config "$tok"
+        fi
+      done
+      ;;
+    repo)
+      local first
+      first="$(echo "$rpayload" | awk '{print $1}')"
+      if declare -F "$first" >/dev/null 2>&1; then
+        undo_config "$first"
+      fi
+      local rest tok
+      rest="$(echo "$rpayload" | cut -d' ' -f2-)"
+      for tok in $rest; do
+        if declare -F "$tok" >/dev/null 2>&1; then
+          undo_config "$tok"
+        fi
+      done
+      ;;
+  esac
+
+  local ok=1
+  if (( WS_FAILED == before_failed )); then
+    catalog_applied_unmark "$rid"
+  else
+    ok=0
+  fi
+  if declare -F ui_progress_item_done >/dev/null 2>&1; then
+    ui_progress_item_done "$rid" "$ok"
+  fi
+}
+
+catalog_remove_selected() {
+  local id
+  catalog_applied_load
+  if ((${#WS_REMOVE_ITEMS[@]})) && declare -F ui_progress_info >/dev/null 2>&1; then
+    ui_progress_info "Removing ${#WS_REMOVE_ITEMS[@]} catalog item(s)"
+  fi
+  for id in "${WS_REMOVE_ITEMS[@]+"${WS_REMOVE_ITEMS[@]}"}"; do
+    [[ -n "$id" ]] || continue
+    catalog_remove_item "$id"
+  done
 }
 
 catalog_apply_selected() {
   local id
+  catalog_applied_load
+  if ((${#WS_SELECTED_ITEMS[@]})) && declare -F ui_progress_info >/dev/null 2>&1; then
+    ui_progress_info "Installing ${#WS_SELECTED_ITEMS[@]} catalog item(s)"
+  fi
   for id in "${WS_SELECTED_ITEMS[@]}"; do
     [[ -n "$id" ]] || continue
     catalog_apply_item "$id"

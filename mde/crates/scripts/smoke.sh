@@ -10,6 +10,9 @@ echo "== cargo test (foundation) =="
 cargo test -p mde-config -p mde-theme -p mde-comp
 cargo test -p mde-shell --bins
 
+echo "== EQ oracle (Audio EQ Cookbook ±0.5 dB) =="
+cargo test -p mde-music --bin neighbourhood-music -- oracle_peaking_matches_cookbook
+
 echo "== release build =="
 cargo build --release \
   -p mde-comp -p mde-shell -p mde-control -p mde-session \

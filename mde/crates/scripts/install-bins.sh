@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN="${CARGO_TARGET_DIR:-$ROOT/target-user}/release"
 install -d "$HOME/.local/bin"
-for b in mde-comp mde-shell mde-control mde-mmc mde-mmc-agent mde-session mde-privileged mde-neighbourhood mde-greeter mde-lock; do
+for b in mde-comp mde-shell mde-control mde-mmc mde-mmc-agent mde-session mde-privileged mde-neighbourhood mde-greeter mde-lock mde-setup-ui; do
   if [[ -x "$BIN/$b" ]]; then
     install -m 755 "$BIN/$b" "$HOME/.local/bin/$b"
   fi

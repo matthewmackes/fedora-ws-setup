@@ -150,6 +150,163 @@ cli_add_items() {
   done
 }
 
+cli_add_remove_items() {
+  local id
+  for id in "$@"; do
+    [[ -n "$id" ]] || continue
+    WS_REMOVE_ITEMS+=("$id")
+  done
+}
+
+# Tri-state intent per id: leave | install | keep | remove
+declare -A WS_CLI_ITEM_STATE=()
+
+cli_item_status_suffix() {
+  case "$1" in
+    install) printf '%s\n' "[install]" ;;
+    keep) printf '%s\n' "[keep]" ;;
+    remove) printf '%s\n' "[remove]" ;;
+    *) printf '%s\n' "" ;;
+  esac
+}
+
+cli_category_master() {
+  local title="$1"
+  cli_choose "$title" \
+    "Category master. Per-item checklist follows unless you pick leave-as-is defaults only." \
+    keep \
+    leave "Leave defaults (recommended install / installed keep)" \
+    install "Queue all items in this category for install" \
+    keep "Keep all installed; leave absent unchecked" \
+    remove "Remove all installed items in this category" \
+    none "Uncheck everything (no install, no remove)"
+}
+
+cli_ask_category_items() {
+  local file="$1" title="$2" master="$3"
+  local -a ids=() labels=() presents=() defaults=()
+  local line id label status present state args=()
+  catalog_applied_load
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    catalog_parse_line "$line" || continue
+    catalog_guard_ok "$C_GUARD" || continue
+    catalog_de_ok "$C_DE" || continue
+    catalog_item_available "$C_KIND" "$C_PAYLOAD" || continue
+    present=0
+    catalog_item_installed "$C_KIND" "$C_PAYLOAD" "$C_ID" && present=1
+    if (( present == 1 )); then
+      state="keep"
+    else
+      case "$(basename "$file")" in
+        00-recommended.conf|00-recommended-pipedal.conf) state="install" ;;
+        *) state="leave" ;;
+      esac
+    fi
+    case "$master" in
+      install) state="install" ;;
+      keep) (( present == 1 )) && state="keep" || state="leave" ;;
+      remove) (( present == 1 )) && state="remove" || state="leave" ;;
+      none) state="leave" ;;
+    esac
+    ids+=("$C_ID")
+    presents+=("$present")
+    defaults+=("$state")
+    labels+=("$C_LABEL $(cli_item_status_suffix "$state")")
+  done < "$file"
+  ((${#ids[@]})) || return 0
+
+  if cli_whiptail_ok; then
+    args=()
+    local i on
+    for ((i = 0; i < ${#ids[@]}; i++)); do
+      on="OFF"
+      [[ "${defaults[i]}" == "install" || "${defaults[i]}" == "keep" ]] && on="ON"
+      # Present+ON = keep; absent+ON = install; present+OFF will become remove after confirm path
+      args+=("${ids[i]}" "${labels[i]}" "$on")
+    done
+    local selected=""
+    selected="$(
+      whiptail --title "$title" --backtitle "Fedora Workstation Setup" \
+        --checklist "Checked = install or keep. Uncheck an installed item to remove it." \
+        22 78 12 "${args[@]}" 3>&1 1>&2 2>&3
+    )" || die "Installer cancelled"
+    # whiptail returns quoted tags
+    selected="${selected//\"/}"
+    local -A picked=()
+    local tok
+    for tok in $selected; do
+      picked["$tok"]=1
+    done
+    for ((i = 0; i < ${#ids[@]}; i++)); do
+      id="${ids[i]}"
+      if [[ -n "${picked[$id]:-}" ]]; then
+        if (( presents[i] == 1 )); then
+          WS_CLI_ITEM_STATE["$id"]=keep
+        else
+          WS_CLI_ITEM_STATE["$id"]=install
+          cli_add_items "$id"
+        fi
+      else
+        if (( presents[i] == 1 )); then
+          WS_CLI_ITEM_STATE["$id"]=remove
+          cli_add_remove_items "$id"
+        else
+          WS_CLI_ITEM_STATE["$id"]=leave
+        fi
+      fi
+    done
+    return 0
+  fi
+
+  # Numbered fallback: toggle each item
+  local i choice
+  for ((i = 0; i < ${#ids[@]}; i++)); do
+    id="${ids[i]}"
+    if (( presents[i] == 1 )); then
+      choice="$(cli_choose "$title — ${labels[i]}" \
+        "Item is installed." \
+        keep \
+        keep "Keep installed" \
+        remove "Remove on apply" \
+        leave "Leave alone (same as keep)")"
+      case "$choice" in
+        remove) WS_CLI_ITEM_STATE["$id"]=remove; cli_add_remove_items "$id" ;;
+        *) WS_CLI_ITEM_STATE["$id"]=keep ;;
+      esac
+    else
+      choice="$(cli_choose "$title — ${ids[i]}" \
+        "${labels[i]}" \
+        "$([[ "${defaults[i]}" == "install" ]] && echo install || echo leave)" \
+        install "Install" \
+        leave "Leave alone")"
+      if [[ "$choice" == "install" ]]; then
+        WS_CLI_ITEM_STATE["$id"]=install
+        cli_add_items "$id"
+      else
+        WS_CLI_ITEM_STATE["$id"]=leave
+      fi
+    fi
+  done
+}
+
+cli_confirm_removes() {
+  ((${#WS_REMOVE_ITEMS[@]})) || return 0
+  local list
+  list="$(printf '%s, ' "${WS_REMOVE_ITEMS[@]}" | sed 's/, $//')"
+  if ! cli_yesno "Confirm catalog removals" \
+    "These catalog items will be removed: ${list}. Continue?"; then
+    die "Installer cancelled"
+  fi
+}
+
+cli_confirm_de_uninstall() {
+  [[ -n "${WS_UNINSTALL_DE:-}" ]] || return 0
+  if ! cli_yesno "Confirm desktop uninstall" \
+    "This will uninstall the ${WS_UNINSTALL_DE} desktop/experience. Shared keep-apps stay. Continue?"; then
+    die "Installer cancelled"
+  fi
+}
+
 cli_set_users() {
   local choice="$1"
   WS_TARGET_USERS=()
@@ -195,77 +352,37 @@ cli_ask_audio() {
 }
 
 cli_ask_desktop_extras() {
-  local choice
-  choice="$(cli_choose "$(cli_q 6 "Recommended")" \
-    "Workstation extras. The base install already includes codecs, the look, and hardening." \
-    all \
-    all "Flathub, power profiles, printing, fonts, and Bluetooth audio" \
-    noflathub "Power profiles, printing, fonts, and Bluetooth audio" \
-    none "None of the recommended extras")"
-  case "$choice" in
-    all) cli_add_items rec-flathub rec-power rec-print rec-fonts rec-btaudio ;;
-    noflathub) cli_add_items rec-power rec-print rec-fonts rec-btaudio ;;
-  esac
-
-  choice="$(cli_choose "$(cli_q 7 "DevOps")" \
-    "Optional development tools." \
-    none \
-    none "No DevOps packages" \
-    podman "Podman suite and the build toolchain" \
-    docker "Docker, VS Code, and KVM")"
-  case "$choice" in
-    podman) cli_add_items devops-podman devops-toolchain ;;
-    docker) cli_add_items devops-docker devops-vscode devops-kvm ;;
-  esac
-
-  choice="$(cli_choose "$(cli_q 8 "Browsers")" \
-    "Firefox is already part of the graphical base." \
-    none \
-    none "No extra browser setup" \
-    policy "Firefox policy pack" \
-    chromium "Firefox policy pack and Chromium")"
-  case "$choice" in
-    policy) cli_add_items browser-firefox-policy ;;
-    chromium) cli_add_items browser-firefox-policy browser-chromium ;;
-  esac
-
-  choice="$(cli_choose "$(cli_q 9 "Gaming")" \
-    "Optional game launchers." \
-    none \
-    none "No gaming packages" \
-    steam "Steam" \
-    more "Steam, Lutris, and Wine")"
-  case "$choice" in
-    steam) cli_add_items game-steam ;;
-    more) cli_add_items game-steam game-lutris game-wine ;;
-  esac
-
-  choice="$(cli_choose "$(cli_q 10 "Studio audio")" \
-    "Optional audio applications. PiPedal's pedal plugins are not part of this desktop." \
-    none \
-    none "No studio audio packages" \
-    reaper "REAPER and the realtime audio groups" \
-    studio "REAPER, realtime audio, and the mixing, synth, and drum LV2 sets")"
-  case "$choice" in
-    reaper) cli_add_items audio-reaper audio-realtime ;;
-    studio) cli_add_items audio-reaper audio-realtime audio-lv2-mix audio-lv2-synths audio-lv2-drums ;;
-  esac
+  # Per-category master + per-item tri-state checklist (full catalog parity).
+  local file title master qn=6 n=0
+  local -a files=()
+  while IFS= read -r file; do
+    [[ -n "$file" ]] || continue
+    catalog_visible_file "$file" || continue
+    files+=("$file")
+  done < <(catalog_files)
+  local total=${#files[@]}
+  for file in "${files[@]}"; do
+    title="$(catalog_category_title "$file")"
+    master="$(cli_category_master "$(cli_q "$qn" "$title master")")"
+    cli_ask_category_items "$file" "$(cli_q "$qn" "$title")" "$master"
+    n=$((n + 1))
+    # Keep question numbers in the 6–10 band for UX; wrap if many categories.
+    if (( qn < 10 )); then
+      qn=$((qn + 1))
+    fi
+  done
+  (( total > 0 )) || true
 }
 
 cli_ask_pipedal_extras() {
-  local choice
-  if cli_ask_yes "$(cli_q 6 "Pedal essentials")" \
-    "Install TooB, Guitarix, Calf, x42, ZAM, and Dragonfly?"; then
-    cli_add_items audio-pedal-core
-  fi
-  if cli_ask_yes "$(cli_q 7 "Amp models")" \
-    "Install Neural Amp Modeler, AIDA-X, Ratatouille, Proteus, and BYOD?"; then
-    cli_add_items audio-pedal-amp
-  fi
-  if cli_ask_yes "$(cli_q 8 "GxPlugins")" \
-    "Install the GxPlugins guitar pedals?"; then
-    cli_add_items audio-pedal-gx
-  fi
+  local choice file title master
+  while IFS= read -r file; do
+    [[ -n "$file" ]] || continue
+    catalog_visible_file "$file" || continue
+    title="$(catalog_category_title "$file")"
+    master="$(cli_category_master "$(cli_q 6 "$title master")")"
+    cli_ask_category_items "$file" "$(cli_q 6 "$title")" "$master"
+  done < <(catalog_files)
   WS_PIPEDAL_ALSA_CARD="$(cli_ask_audio)"
   choice="$(cli_choose "$(cli_q 10 "Secure Boot")" \
     "This applies only when Secure Boot is on and a realtime kernel was installed." \
@@ -296,6 +413,17 @@ cli_ask() {
       workstation "Workstation MDE")"
   fi
   de_mark_switch
+
+  WS_UNINSTALL_DE=""
+  choice="$(cli_choose "$(cli_q 1c "Uninstall experience")" \
+    "Optionally remove a desktop already on this machine. Shared keep-apps are protected." \
+    none \
+    none "Do not uninstall a desktop" \
+    mde "Uninstall MDE" \
+    xfce "Uninstall XFCE" \
+    pipedal "Uninstall PiPedal" \
+    all "Uninstall all graphical experiences managed here")"
+  [[ "$choice" == "none" ]] || WS_UNINSTALL_DE="$choice"
 
   choice="$(cli_choose "$(cli_q 2 "Users")" \
     "Local users: ${WS_LOCAL_USERS[*]:-none}. PiPedal itself runs as the pipedal_d service account. XFCE and Sway write the look for the users you pick." \
@@ -332,6 +460,8 @@ cli_ask() {
     off "No automatic updates")"
 
   WS_SELECTED_ITEMS=()
+  WS_REMOVE_ITEMS=()
+  WS_CLI_ITEM_STATE=()
   if [[ "$WS_DE" == "pipedal" ]]; then
     [[ "$WS_CLI_SSH" == "leave" ]] || cli_add_items rec-ssh
     [[ "$WS_CLI_MDNS" == "off" ]] || cli_add_items rec-mdns
@@ -339,6 +469,8 @@ cli_ask() {
   else
     cli_ask_desktop_extras
   fi
+  cli_confirm_removes
+  cli_confirm_de_uninstall
 }
 
 cli_apply_extras() {
@@ -398,9 +530,15 @@ run_cli() {
   cli_ensure_ui
   info "Text installer: ten questions, then apply (desktop default $(de_default_choice))"
   cli_ask
-  info "CLI choices: de=$WS_DE users=${WS_TARGET_USERS[*]:-none} ssh=${WS_CLI_SSH:-leave} mdns=${WS_CLI_MDNS:-off} updates=${WS_UPDATES:-weekly} items=${WS_SELECTED_ITEMS[*]:-none} audio=${WS_PIPEDAL_ALSA_CARD:-auto} mok=${WS_PIPEDAL_MOK_CHOICE:-queue} rt-fail=${WS_PIPEDAL_RT_ON_FAIL:-stop}"
+  info "CLI choices: de=$WS_DE users=${WS_TARGET_USERS[*]:-none} ssh=${WS_CLI_SSH:-leave} mdns=${WS_CLI_MDNS:-off} updates=${WS_UPDATES:-weekly} items=${WS_SELECTED_ITEMS[*]:-none} remove=${WS_REMOVE_ITEMS[*]:-none} uninstall_de=${WS_UNINSTALL_DE:-none} audio=${WS_PIPEDAL_ALSA_CARD:-auto} mok=${WS_PIPEDAL_MOK_CHOICE:-queue} rt-fail=${WS_PIPEDAL_RT_ON_FAIL:-stop}"
   cli_say ""
   cli_say "$(de_switch_summary)"
+  if ((${#WS_REMOVE_ITEMS[@]})); then
+    cli_say "Catalog removals: ${WS_REMOVE_ITEMS[*]}"
+  fi
+  if [[ -n "${WS_UNINSTALL_DE:-}" ]]; then
+    cli_say "Desktop uninstall: $WS_UNINSTALL_DE"
+  fi
   cli_say "Applying. Package output is in $WS_LOG_FILE"
   wizard_apply
   cli_finish

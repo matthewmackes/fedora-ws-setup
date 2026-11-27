@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Fullscreen Fedora workstation installer using Anaconda's graphical widgets."""
+"""Model compile + legacy Anaconda GTK installer.
+
+The live graphical path is ``mde-setup-ui`` (Rust). This module remains for
+``--compile-model`` / ``ui_write_model`` dumps and offline screenshot helpers.
+"""
 
 import argparse
 import json
@@ -100,11 +104,30 @@ def compile_model(src, dest):
                 title = _strip(folder / f"{idx}.title")
                 lines = _read(folder / f"{idx}.args").splitlines()
                 items = []
-                for i in range(0, len(lines) - 2, 3):
-                    item_id, label, status = lines[i], lines[i + 1], lines[i + 2]
+                # New format: id, label, ON/OFF, PRESENT/ABSENT (quads).
+                # Legacy: id, label, ON/OFF (triples).
+                i = 0
+                while i < len(lines):
+                    if not lines[i]:
+                        i += 1
+                        continue
+                    if i + 3 < len(lines) and lines[i + 3] in ("PRESENT", "ABSENT"):
+                        item_id, label, status, present = lines[i], lines[i + 1], lines[i + 2], lines[i + 3]
+                        i += 4
+                    elif i + 2 < len(lines):
+                        item_id, label, status = lines[i], lines[i + 1], lines[i + 2]
+                        present = "PRESENT" if "[keep]" in label or "[installed]" in label else "ABSENT"
+                        i += 3
+                    else:
+                        break
                     if not item_id:
                         continue
-                    items.append({"id": item_id, "label": label, "on": status == "ON"})
+                    items.append({
+                        "id": item_id,
+                        "label": label,
+                        "on": status == "ON",
+                        "present": present == "PRESENT",
+                    })
                 if items:
                     cats.append({"title": title, "key": f"cat:{de}:{idx}", "items": items})
         categories[de] = cats

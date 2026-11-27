@@ -181,6 +181,32 @@ ensure_flatpak() {
   run_or_skip "flatpak:$app_id" flatpak install -y --noninteractive flathub "$app_id"
 }
 
+remove_pkgs() {
+  local label="$1"; shift
+  local present=()
+  local p
+  for p in "$@"; do
+    [[ -n "$p" ]] || continue
+    pkg_installed "$p" && present+=("$p")
+  done
+  if ((${#present[@]} == 0)); then
+    info "Already removed: $label"
+    WS_SKIPPED=$((WS_SKIPPED + 1))
+    return 0
+  fi
+  run_or_skip "$label" dnf_yes remove "${present[@]}"
+}
+
+remove_flatpak() {
+  local app_id="$1"
+  if ! flatpak_installed "$app_id"; then
+    info "Flatpak already removed: $app_id"
+    WS_SKIPPED=$((WS_SKIPPED + 1))
+    return 0
+  fi
+  run_or_skip "flatpak-remove:$app_id" flatpak uninstall -y --noninteractive "$app_id"
+}
+
 ensure_copr() {
   local project="$1"
   run_or_skip "copr:$project" dnf_yes copr enable "$project"
@@ -204,6 +230,34 @@ apply_config() {
   else
     error "Config failed: $fn"
     WS_FAILURES+=("config:$fn")
+    WS_FAILED=$((WS_FAILED + 1))
+  fi
+  return 0
+}
+
+# Best-effort undo: prefers ${fn}_undo, then undo_${fn#cfg_}
+undo_config() {
+  local fn="$1"
+  local undo=""
+  if declare -F "${fn}_undo" >/dev/null 2>&1; then
+    undo="${fn}_undo"
+  elif [[ "$fn" == cfg_* ]] && declare -F "undo_${fn#cfg_}" >/dev/null 2>&1; then
+    undo="undo_${fn#cfg_}"
+  fi
+  if [[ -z "$undo" ]]; then
+    warn "No undo helper for config $fn — skipping"
+    WS_SKIPPED=$((WS_SKIPPED + 1))
+    return 0
+  fi
+  if is_dry_run; then
+    info "DRY-RUN: undo config $undo"
+    return 0
+  fi
+  if "$undo"; then
+    WS_APPLIED=$((WS_APPLIED + 1))
+  else
+    error "Config undo failed: $undo"
+    WS_FAILURES+=("undo:$fn")
     WS_FAILED=$((WS_FAILED + 1))
   fi
   return 0

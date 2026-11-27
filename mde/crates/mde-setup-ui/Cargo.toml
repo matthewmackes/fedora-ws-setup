@@ -1,0 +1,21 @@
+[package]
+name = "mde-setup-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Fullscreen workstation setup UI (catalog install/remove tri-state)."
+publish = false
+
+[[bin]]
+name = "mde-setup-ui"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+iced = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

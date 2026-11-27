@@ -791,7 +791,15 @@ pub fn mde_spec_rows() -> Vec<(String, String)> {
         ),
         ("Kernel".into(), kernel),
         ("Desktop".into(), mde_theme::DESKTOP_STACK.to_string()),
-        ("Typography".into(), mde_theme::FONT_BRANDING.to_string()),
+        (
+            "Typography".into(),
+            mde_theme::font_branding_for(
+                &mde_config::MdeConfig::load()
+                    .unwrap_or_default()
+                    .active()
+                    .theme,
+            ),
+        ),
         (
             "Default accent".into(),
             mde_theme::ACCENT_DEFAULT.to_string(),
@@ -1815,6 +1823,189 @@ pub fn apply_contrast_theme(mode: &str) -> String {
     // Also tip qt when available.
     let _ = std::env::set_var("GTK_THEME", gtk);
     format!("Contrast · {}", notes.join(" · "))
+}
+
+/// Apply UI + monospace fonts to fontconfig, GTK, GSettings, and Qt.
+pub fn apply_ui_fonts(ui: &str, mono: &str) -> String {
+    let ui = ui.trim();
+    let mono = mono.trim();
+    let ui = if ui.is_empty() { mde_theme::FONT } else { ui };
+    let mono = if mono.is_empty() {
+        mde_theme::FONT_MONO
+    } else {
+        mono
+    };
+    let body = "10.5";
+    let title = "9";
+    let look_font = format!("{ui} {body}");
+    let look_title = format!("{ui} {title}");
+    let mono_gs = format!("{mono} {body}");
+    let mut notes = Vec::new();
+
+    if let Ok(home) = std::env::var("HOME") {
+        let fc_dir = std::path::PathBuf::from(&home).join(".config/fontconfig/conf.d");
+        let _ = std::fs::create_dir_all(&fc_dir);
+        let fc_path = fc_dir.join("50-mde-ui-font.conf");
+        let xml = format!(
+            r#"<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+  <alias binding="same">
+    <family>sans-serif</family>
+    <prefer><family>{ui}</family></prefer>
+  </alias>
+  <alias binding="same">
+    <family>monospace</family>
+    <prefer><family>{mono}</family></prefer>
+  </alias>
+  <alias binding="same">
+    <family>Segoe UI</family>
+    <prefer><family>{ui}</family></prefer>
+  </alias>
+  <alias binding="same">
+    <family>Segoe UI Variable</family>
+    <prefer><family>{ui}</family></prefer>
+  </alias>
+</fontconfig>
+"#
+        );
+        match std::fs::write(&fc_path, xml) {
+            Ok(()) => notes.push("fontconfig".into()),
+            Err(e) => notes.push(format!("fontconfig: {e}")),
+        }
+
+        for gtk_ver in ["gtk-3.0", "gtk-4.0"] {
+            let dir = std::path::PathBuf::from(&home).join(".config").join(gtk_ver);
+            let _ = std::fs::create_dir_all(&dir);
+            let path = dir.join("settings.ini");
+            let mut body_ini = if path.is_file() {
+                std::fs::read_to_string(&path).unwrap_or_default()
+            } else {
+                "[Settings]\n".into()
+            };
+            if body_ini.contains("gtk-font-name=") {
+                let re = regex_lite_replace_font_line(&body_ini, "gtk-font-name", &look_font);
+                body_ini = re;
+            } else if body_ini.contains("[Settings]") {
+                body_ini = body_ini.replacen(
+                    "[Settings]",
+                    &format!("[Settings]\ngtk-font-name={look_font}"),
+                    1,
+                );
+            } else {
+                body_ini.push_str(&format!("\n[Settings]\ngtk-font-name={look_font}\n"));
+            }
+            let _ = std::fs::write(&path, body_ini);
+        }
+        notes.push("gtk.ini".into());
+
+        // Qt5/Qt6 font via qt5ct / qt6ct if present; else kdeglobals General font.
+        let kde = std::path::PathBuf::from(&home).join(".config/kdeglobals");
+        if kde.is_file() || std::fs::write(&kde, "[General]\n").is_ok() {
+            let mut text = std::fs::read_to_string(&kde).unwrap_or_else(|_| "[General]\n".into());
+            if !text.contains("[General]") {
+                text.push_str("\n[General]\n");
+            }
+            // Qt font string: "Family,size,-1,5,400,0,0,0,0,0"
+            let qt_font = format!("\"{ui},{body},-1,5,400,0,0,0,0,0\"");
+            let qt_fixed = format!("\"{mono},{body},-1,5,400,0,0,0,0,0\"");
+            text = upsert_ini_key(&text, "General", "font", &qt_font);
+            text = upsert_ini_key(&text, "General", "fixed", &qt_fixed);
+            let _ = std::fs::write(&kde, text);
+            notes.push("kdeglobals".into());
+        }
+
+        // xfconf xsettings when available
+        let _ = run(
+            "xfconf-query",
+            &[
+                "-c",
+                "xsettings",
+                "-p",
+                "/Gtk/FontName",
+                "-s",
+                &look_font,
+            ],
+        );
+        let _ = run(
+            "xfconf-query",
+            &[
+                "-c",
+                "xfwm4",
+                "-p",
+                "/general/title_font",
+                "-s",
+                &look_title,
+            ],
+        );
+    }
+
+    for (key, val) in [
+        ("font-name", look_font.as_str()),
+        ("monospace-font-name", mono_gs.as_str()),
+    ] {
+        match gsettings_set("org.gnome.desktop.interface", key, val) {
+            Ok(()) => notes.push(format!("gsettings {key}")),
+            Err(e) => notes.push(e),
+        }
+    }
+
+    let _ = run("fc-cache", &["-f"]);
+    notes.push("fc-cache".into());
+    format!("Fonts · {ui} / {mono} · {}", notes.join(" · "))
+}
+
+fn regex_lite_replace_font_line(text: &str, key: &str, value: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 32);
+    for line in text.lines() {
+        if line.trim_start().starts_with(&format!("{key}=")) {
+            out.push_str(key);
+            out.push('=');
+            out.push_str(value);
+            out.push('\n');
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
+fn upsert_ini_key(text: &str, section: &str, key: &str, value: &str) -> String {
+    let header = format!("[{section}]");
+    let mut lines: Vec<String> = text.lines().map(|l| l.to_string()).collect();
+    let mut in_section = false;
+    let mut replaced = false;
+    let mut section_end = None;
+    for (i, line) in lines.iter().enumerate() {
+        let t = line.trim();
+        if t.starts_with('[') && t.ends_with(']') {
+            if in_section && section_end.is_none() {
+                section_end = Some(i);
+            }
+            in_section = t.eq_ignore_ascii_case(&header);
+            continue;
+        }
+        if in_section && t.starts_with(&format!("{key}=")) {
+            lines[i] = format!("{key}={value}");
+            replaced = true;
+            break;
+        }
+    }
+    if !replaced {
+        if let Some(idx) = lines.iter().position(|l| l.trim().eq_ignore_ascii_case(&header)) {
+            lines.insert(idx + 1, format!("{key}={value}"));
+        } else {
+            lines.push(header);
+            lines.push(format!("{key}={value}"));
+        }
+    }
+    let mut out = lines.join("\n");
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    let _ = section_end;
+    out
 }
 
 /// A072: persist + apply text scale to gsettings and MDE config.

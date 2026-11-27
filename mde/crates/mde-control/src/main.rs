@@ -46,16 +46,19 @@ fn main() -> iced::Result {
     }
 
     let page = args.first().cloned().unwrap_or_default();
+    let boot_cfg = mde_config::MdeConfig::load().unwrap_or_default();
+    let ui = mde_theme::ui_font(&boot_cfg.active().theme).to_string();
+    let mono = mde_theme::mono_font(&boot_cfg.active().theme).to_string();
     let mut app = iced::application("Settings", Control::update, Control::view)
         .theme(Control::theme)
-        .default_font(iced::Font::with_name(mde_theme::FONT))
+        .default_font(iced::Font::with_name(Box::leak(ui.clone().into_boxed_str())))
         .window(iced::window::Settings {
             size: iced::Size::new(1100.0, 720.0),
             // Negotiate decorations; compositor forces SSD (MDE standard).
             decorations: true,
             ..Default::default()
         });
-    for bytes in mde_theme::font_bytes() {
+    for bytes in mde_theme::font_bytes_selected(&ui, &mono) {
         app = app.font(bytes);
     }
     app.run_with(move || Control::new(page))
@@ -77,6 +80,11 @@ pub enum Message {
     SelectProfile(String),
     SetAccent(String),
     LookSample,
+    /// Personalization → Fonts: UI chrome typeface.
+    SetUiFont(String),
+    /// Personalization → Fonts: monospace typeface.
+    SetMonoFont(String),
+    FontsQuery(String),
     SetMode(String),
     SetWallpaper(String),
     ApplyWallpaper,
@@ -341,6 +349,8 @@ pub struct Control {
     pub notif_app_focus: String,
     /// A063: startup apps search filter.
     pub startup_query: String,
+    /// Personalization → Fonts search filter.
+    pub fonts_query: String,
 }
 
 impl Control {
@@ -426,6 +436,7 @@ impl Control {
                 notif_app_prefs: system::load_app_notif_pref_rows(),
                 notif_app_focus,
                 startup_query: String::new(),
+                fonts_query: String::new(),
             },
             Task::none(),
         )
@@ -660,6 +671,29 @@ impl Control {
                         Err(e) => self.status = format!("Save failed: {e}"),
                     }
                 }
+            }
+            Message::SetUiFont(family) => {
+                self.cfg.active_mut().theme.ui_font = family.clone();
+                match self.cfg.save() {
+                    Ok(()) => {
+                        let mono = mde_theme::mono_font(&self.cfg.active().theme).to_string();
+                        self.status = system::apply_ui_fonts(&family, &mono);
+                    }
+                    Err(e) => self.status = format!("Save failed: {e}"),
+                }
+            }
+            Message::SetMonoFont(family) => {
+                self.cfg.active_mut().theme.mono_font = family.clone();
+                match self.cfg.save() {
+                    Ok(()) => {
+                        let ui = mde_theme::ui_font(&self.cfg.active().theme).to_string();
+                        self.status = system::apply_ui_fonts(&ui, &family);
+                    }
+                    Err(e) => self.status = format!("Save failed: {e}"),
+                }
+            }
+            Message::FontsQuery(q) => {
+                self.fonts_query = q;
             }
             Message::SetMode(mode) => {
                 self.cfg.active_mut().theme.mode = mode.clone();

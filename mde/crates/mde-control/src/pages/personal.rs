@@ -1,5 +1,5 @@
-use iced::widget::{column, row, text, text_input};
-use iced::Element;
+use iced::widget::{column, row, scrollable, text, text_input};
+use iced::{Element, Font};
 
 use crate::widgets::{
     accent_btn, accent_swatches, appearance_card, child_nav_rows, choice, link_btn, page_frame,
@@ -7,15 +7,89 @@ use crate::widgets::{
 };
 use crate::{Control, Message};
 
+fn iced_named(family: &str) -> Font {
+    Font::with_name(intern_font_name(family))
+}
+
+fn intern_font_name(family: &str) -> &'static str {
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    static MAP: Mutex<Option<HashMap<String, &'static str>>> = Mutex::new(None);
+    let mut guard = MAP.lock().unwrap_or_else(|e| e.into_inner());
+    let map = guard.get_or_insert_with(HashMap::new);
+    if let Some(s) = map.get(family) {
+        return s;
+    }
+    let leaked: &'static str = Box::leak(family.to_string().into_boxed_str());
+    map.insert(family.to_string(), leaked);
+    leaked
+}
+
 pub fn hub(app: &Control) -> Element<'_, Message> {
     let p = &app.palette;
+    let cfg = app.cfg.active();
+    let ui = mde_theme::ui_font(&cfg.theme).to_string();
+    let mono = mde_theme::mono_font(&cfg.theme).to_string();
+    let quick_ui = ["Inter", "Roboto", "Open Sans", "Selawik"];
+    let quick_mono = [
+        "Cascadia Mono",
+        "Fira Code",
+        "JetBrainsMono Nerd Font",
+        "Hack Nerd Font",
+    ];
     page_frame(
         p,
         "Personalization",
         Some("Background, colours, themes, Start, taskbar"),
-        column![appearance_card(p), child_nav_rows(p, "personalization")]
-            .spacing(4)
-            .into(),
+        column![
+            appearance_card(p),
+            section_label(p, "Typography"),
+            settings_row(
+                p,
+                "preferences-desktop-font",
+                "UI font",
+                Some(ui.as_str()),
+                {
+                    let mut r = row![].spacing(8);
+                    for name in quick_ui {
+                        r = r.push(choice(
+                            p,
+                            name,
+                            ui.eq_ignore_ascii_case(name),
+                            Message::SetUiFont(name.into()),
+                        ));
+                    }
+                    r.into()
+                },
+            ),
+            settings_row(
+                p,
+                "preferences-desktop-font",
+                "Mono",
+                Some(mono.as_str()),
+                {
+                    let mut r = row![].spacing(8);
+                    for name in quick_mono {
+                        let label = if name.contains("Nerd") {
+                            name.split_whitespace().next().unwrap_or(name)
+                        } else {
+                            name
+                        };
+                        r = r.push(choice(
+                            p,
+                            label,
+                            mono.eq_ignore_ascii_case(name),
+                            Message::SetMonoFont(name.into()),
+                        ));
+                    }
+                    r.into()
+                },
+            ),
+            link_btn(p, "All fonts…", Message::Navigate("fonts".into())),
+            child_nav_rows(p, "personalization")
+        ]
+        .spacing(4)
+        .into(),
     )
 }
 
@@ -557,15 +631,105 @@ pub fn widgets(app: &Control) -> Element<'_, Message> {
 
 pub fn fonts(app: &Control) -> Element<'_, Message> {
     let p = &app.palette;
+    let cfg = app.cfg.active();
+    let ui = mde_theme::ui_font(&cfg.theme).to_string();
+    let mono = mde_theme::mono_font(&cfg.theme).to_string();
+    let q = app.fonts_query.trim().to_ascii_lowercase();
+    let pangram = "The quick brown fox jumps over the lazy dog.";
+
+    let mut ui_list = column![].spacing(4);
+    for choice_font in mde_theme::ui_font_choices() {
+        if !q.is_empty() && !choice_font.family.to_ascii_lowercase().contains(&q) {
+            continue;
+        }
+        let selected = ui.eq_ignore_ascii_case(&choice_font.family);
+        let family = choice_font.family.clone();
+        ui_list = ui_list.push(settings_row(
+            p,
+            "preferences-desktop-font",
+            &choice_font.family,
+            Some(if selected { "Selected" } else { "UI" }),
+            column![
+                text(pangram)
+                    .size(15)
+                    .font(iced_named(&choice_font.family)),
+                choice(
+                    p,
+                    if selected { "Using" } else { "Use" },
+                    selected,
+                    Message::SetUiFont(family),
+                ),
+            ]
+            .spacing(4)
+            .into(),
+        ));
+    }
+
+    let mut mono_list = column![].spacing(4);
+    for choice_font in mde_theme::mono_font_choices() {
+        if !q.is_empty() && !choice_font.family.to_ascii_lowercase().contains(&q) {
+            continue;
+        }
+        let selected = mono.eq_ignore_ascii_case(&choice_font.family);
+        let family = choice_font.family.clone();
+        let kind = match choice_font.kind {
+            mde_theme::FontKind::Nerd => "Nerd",
+            _ => "Mono",
+        };
+        mono_list = mono_list.push(settings_row(
+            p,
+            "preferences-desktop-font",
+            &choice_font.family,
+            Some(if selected {
+                "Selected"
+            } else {
+                kind
+            }),
+            column![
+                text(pangram)
+                    .size(14)
+                    .font(iced_named(&choice_font.family)),
+                choice(
+                    p,
+                    if selected { "Using" } else { "Use" },
+                    selected,
+                    Message::SetMonoFont(family),
+                ),
+            ]
+            .spacing(4)
+            .into(),
+        ));
+    }
+
     page_frame(
         p,
         "Fonts",
-        Some("Install, manage"),
+        Some("UI · Mono · curated Nerd"),
         column![
-            status_row(p, "preferences-desktop-font", "UI font", mde_theme::FONT),
-            status_row(p, "preferences-desktop-font", "Mono", mde_theme::FONT_MONO),
-            iced::widget::text("The quick brown fox jumps over the lazy dog.").size(16),
-            iced::widget::text("Install fonts under ~/.local/share/fonts or /usr/share/fonts.")
+            status_row(p, "preferences-desktop-font", "UI font", &ui),
+            status_row(p, "preferences-desktop-font", "Mono", &mono),
+            text(pangram)
+                .size(18)
+                .font(iced_named(&ui)),
+            settings_row(
+                p,
+                "system-search",
+                "Search",
+                Some("Filter catalog"),
+                text_input("Inter, Fira Code, Nerd…", &app.fonts_query)
+                    .on_input(Message::FontsQuery)
+                    .width(280)
+                    .into(),
+            ),
+            section_label(p, "UI fonts (Google + Selawik)"),
+            scrollable(ui_list).height(220),
+            section_label(p, "Mono · Google + curated Nerd Fonts"),
+            scrollable(mono_list).height(220),
+            text(
+                "Full Nerd catalog: install extra faces into ~/.local/share/fonts. Platform ships a curated subset."
+            )
+            .size(12),
+            text("Install fonts under ~/.local/share/fonts or /usr/share/fonts/mde.")
                 .size(12),
         ]
         .spacing(4)

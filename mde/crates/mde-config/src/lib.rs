@@ -362,6 +362,12 @@ pub struct ThemeConfig {
     /// A087: load packs from `~/.local/share/mde/styles/*.toml`.
     #[serde(default = "default_true")]
     pub style_packs_enabled: bool,
+    /// UI chrome typeface (Personalization → Fonts). Default Inter.
+    #[serde(default = "default_ui_font")]
+    pub ui_font: String,
+    /// Monospace typeface (Personalization → Fonts). Default Cascadia Mono.
+    #[serde(default = "default_mono_font")]
+    pub mono_font: String,
 }
 
 fn default_accent() -> String {
@@ -387,6 +393,12 @@ fn default_dark_schedule_mode() -> String {
 }
 fn default_ssd_radius() -> u8 {
     8
+}
+fn default_ui_font() -> String {
+    "Inter".into()
+}
+fn default_mono_font() -> String {
+    "Cascadia Mono".into()
 }
 
 impl Default for ThemeConfig {
@@ -418,6 +430,8 @@ impl Default for ThemeConfig {
             ssd_mica: true,
             style_pack: String::new(),
             style_packs_enabled: true,
+            ui_font: default_ui_font(),
+            mono_font: default_mono_font(),
         }
     }
 }
@@ -1387,6 +1401,8 @@ impl MdeConfig {
                 true,
             ),
             key("theme.accent", "Theme", "Accent colour", false),
+            key("theme.ui_font", "Theme", "UI font family", false),
+            key("theme.mono_font", "Theme", "Monospace font family", false),
             key("theme.mode", "Theme", "Colour mode", false),
             key("theme.animations", "Theme", "Animations", false),
             key("theme.transparency", "Theme", "Transparency effects", false),

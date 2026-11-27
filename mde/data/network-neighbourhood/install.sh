@@ -39,8 +39,10 @@ chmod 0700 /etc/network-neighbourhood/creds
 mkdir -p /var/lib/network-neighbourhood
 chmod 0755 /var/lib/network-neighbourhood
 if [[ ! -f /etc/network-neighbourhood/places.json ]]; then
-  install -m 0640 "$DATA/places.json" /etc/network-neighbourhood/places.json
+  install -m 0644 "$DATA/places.json" /etc/network-neighbourhood/places.json
 fi
+# Session apps (Music) need to list places; secrets stay in creds/.
+chmod 0644 /etc/network-neighbourhood/places.json 2>/dev/null || true
 
 mkdir -p /mnt/network/{SMB,SSH,NFS,WebDAV,Video,Audio}
 

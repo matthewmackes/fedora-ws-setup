@@ -33,10 +33,44 @@ ui_find_display() {
 }
 
 ui_prepare_display() {
-  ui_find_display || die "The Anaconda installer needs a graphical session. On a text console run: $WS_ROOT/fedora-ws-setup.sh --cli"
+  ui_find_display || die "The graphical installer needs a session. On a text console run: $WS_ROOT/fedora-ws-setup.sh --cli"
   if [[ -n "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" && -n "${SUDO_USER:-}" ]]; then
     runuser -u "$SUDO_USER" -- xhost +si:localuser:root >/dev/null 2>&1 || true
   fi
+}
+
+# Prefer the Rust setup UI. anaconda_ui.py remains only for --compile-model / legacy dumps.
+ui_setup_ui_bin() {
+  local cand
+  for cand in \
+    "$WS_ROOT/mde/crates/target/release/mde-setup-ui" \
+    "$WS_ROOT/mde/crates/target/debug/mde-setup-ui" \
+    "${HOME:-}/.local/bin/mde-setup-ui" \
+    /usr/local/bin/mde-setup-ui; do
+    if [[ -x "$cand" ]]; then
+      printf '%s\n' "$cand"
+      return 0
+    fi
+  done
+  if command -v mde-setup-ui >/dev/null 2>&1; then
+    command -v mde-setup-ui
+    return 0
+  fi
+  return 1
+}
+
+ui_ensure_setup_ui() {
+  if ui_setup_ui_bin >/dev/null; then
+    return 0
+  fi
+  local crates="$WS_ROOT/mde/crates"
+  if [[ -f "$crates/Cargo.toml" ]] && command -v cargo >/dev/null 2>&1; then
+    info "Building mde-setup-ui (Rust installer)…"
+    if (cd "$crates" && cargo build -p mde-setup-ui); then
+      ui_setup_ui_bin >/dev/null && return 0
+    fi
+  fi
+  die "mde-setup-ui is required for the graphical installer. Build with: (cd $WS_ROOT/mde/crates && cargo build -p mde-setup-ui) or use --cli"
 }
 
 ui_have_anaconda() {
@@ -47,15 +81,10 @@ from gi.repository import Gtk, AnacondaWidgets' >/dev/null 2>&1
 }
 
 ui_ensure_anaconda() {
+  # Legacy helper kept for --compile-model dumps that still use anaconda_ui.py.
   ui_have_anaconda && return 0
-  if [[ "$(id -u)" -eq 0 ]] && ! is_dry_run; then
-    info "Installing Anaconda installer widgets..."
-    dnf_yes install anaconda-widgets python3-gobject python3-dbus gtk3 || true
-  fi
-  if ! ui_have_anaconda; then
-    die "Anaconda's graphical installer widgets are required. Install with: dnf install -y anaconda-widgets python3-gobject python3-dbus gtk3"
-  fi
-  python3 -c 'import dbus, dbus.service' >/dev/null 2>&1 || die "python3-dbus is required for the Anaconda installer."
+  warn "Anaconda widgets not installed; model compile still works without the live GTK UI."
+  return 0
 }
 
 # Build the JSON model the fullscreen installer reads. Writes to $1.
@@ -118,6 +147,31 @@ ui_phase_done() {
     printf 'DONE\t%s\t%s\n' "$ok" "$title" >>"$WS_PROGRESS_FILE"
   else
     printf '==> %s %s\n' "$([[ "$ok" == "1" ]] && echo done || echo failed)" "$title" >&2
+  fi
+}
+
+# Fine-grained feedback for the setup UI (current catalog/DE action).
+ui_progress_info() {
+  local msg="$*"
+  if [[ -n "${WS_PROGRESS_FILE:-}" ]]; then
+    printf 'INFO\t%s\n' "$msg" >>"$WS_PROGRESS_FILE"
+  fi
+}
+
+ui_progress_item() {
+  # ui_progress_item apply|remove <id> <label...>
+  local op="$1" id="$2"
+  shift 2
+  local label="$*"
+  if [[ -n "${WS_PROGRESS_FILE:-}" ]]; then
+    printf 'ITEM\t%s\t%s\t%s\n' "$op" "$id" "$label" >>"$WS_PROGRESS_FILE"
+  fi
+}
+
+ui_progress_item_done() {
+  local id="$1" ok="${2:-1}"
+  if [[ -n "${WS_PROGRESS_FILE:-}" ]]; then
+    printf 'ITEM_DONE\t%s\t%s\n' "$id" "$ok" >>"$WS_PROGRESS_FILE"
   fi
 }
 

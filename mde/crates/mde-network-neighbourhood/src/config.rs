@@ -138,7 +138,8 @@ impl Config {
     pub fn save(&self) -> Result<()> {
         ensure_config_dirs()?;
         let json = serde_json::to_string_pretty(self)?;
-        atomic_write_mode(Path::new(PLACES_FILE), json.as_bytes(), 0o640)?;
+        // 0644: session apps (Neighbourhood Music) need to list places; secrets stay in creds/.
+        atomic_write_mode(Path::new(PLACES_FILE), json.as_bytes(), 0o644)?;
         let settings_json = serde_json::to_string_pretty(&self.settings)?;
         atomic_write_mode(Path::new(SETTINGS_FILE), settings_json.as_bytes(), 0o644)?;
         Ok(())

@@ -27,17 +27,20 @@ fn main() -> iced::Result {
         return Ok(());
     }
 
+    let boot_cfg = mde_config::MdeConfig::load().unwrap_or_default();
+    let ui = mde_theme::ui_font(&boot_cfg.active().theme).to_string();
+    let mono = mde_theme::mono_font(&boot_cfg.active().theme).to_string();
     let mut app = iced::application("Sign in", Greeter::update, Greeter::view)
         .theme(Greeter::theme)
         .subscription(Greeter::subscription)
-        .default_font(iced::Font::with_name(mde_theme::FONT))
+        .default_font(iced::Font::with_name(Box::leak(ui.clone().into_boxed_str())))
         .window(iced::window::Settings {
             size: iced::Size::new(1280.0, 800.0),
             decorations: false,
             resizable: false,
             ..Default::default()
         });
-    for bytes in mde_theme::font_bytes() {
+    for bytes in mde_theme::font_bytes_selected(&ui, &mono) {
         app = app.font(bytes);
     }
     app.run_with(Greeter::new)

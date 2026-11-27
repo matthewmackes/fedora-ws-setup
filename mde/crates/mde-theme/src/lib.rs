@@ -26,58 +26,24 @@ pub const SUBTITLE: &str = "Rust Wayland desktop for Fedora";
 /// One-line intent shown on About.
 pub const TAGLINE: &str = "Build to match commodity desktop concepts.";
 pub const ACCENT_DEFAULT: &str = "#0078d4";
-pub const FONT: &str = "Selawik";
+/// Default UI family when config is missing / unset.
+pub const FONT: &str = "Inter";
+/// Default monospace family when config is missing / unset.
 pub const FONT_MONO: &str = "Cascadia Mono";
 /// Typography line for About / branding surfaces.
-pub const FONT_BRANDING: &str = "UI · Selawik · Mono · Cascadia Mono";
+pub const FONT_BRANDING: &str = "UI · Inter · Mono · Cascadia Mono · Google Fonts + curated Nerd";
 /// Desktop stack shown in About software specs.
 pub const DESKTOP_STACK: &str = "Wayland · mde-comp (Smithay) · mde-shell (iced)";
 
 #[cfg(feature = "icons")]
 pub mod icons;
 
-/// Selawik and Cascadia Mono files shipped with the platform, when they are installed.
-pub fn font_bytes() -> Vec<Vec<u8>> {
-    font_paths()
-        .into_iter()
-        .filter_map(|path| std::fs::read(path).ok())
-        .collect()
-}
+mod fonts;
 
-fn font_paths() -> Vec<std::path::PathBuf> {
-    let mut found = Vec::new();
-    let mut push_unique = |path: std::path::PathBuf| {
-        if !path.is_file() {
-            return;
-        }
-        let name = path.file_name().map(|n| n.to_os_string());
-        if found.iter().any(|existing: &std::path::PathBuf| {
-            existing.file_name().map(|n| n.to_os_string()) == name
-        }) {
-            return;
-        }
-        found.push(path);
-    };
-    let mut roots = vec![std::path::PathBuf::from("/usr/share/fonts")];
-    if let Ok(home) = std::env::var("HOME") {
-        roots.push(std::path::PathBuf::from(&home).join(".local/share/fonts"));
-        roots.push(std::path::PathBuf::from(&home).join(".fonts"));
-    }
-    for root in roots {
-        for rel in [
-            "mde/Selawik/selawk.ttf",
-            "mde/Selawik/selawkb.ttf",
-            "mde/Selawik/selawksb.ttf",
-            "Selawik/selawk.ttf",
-            "Selawik/selawkb.ttf",
-            "Selawik/selawksb.ttf",
-            "cascadia-mono-fonts/CascadiaMono-Regular.otf",
-        ] {
-            push_unique(root.join(rel));
-        }
-    }
-    found
-}
+pub use fonts::{
+    family_installed, font_branding_for, font_bytes, font_bytes_selected, mono_font,
+    mono_font_choices, ui_font, ui_font_choices, FontChoice, FontKind,
+};
 pub const PANEL_HEIGHT: i32 = 48;
 /// Windows 11–style corner radius for flyouts and Settings cards.
 pub const FLYOUT_RADIUS: f32 = 12.0;
@@ -420,8 +386,10 @@ pub fn licenses_at_play() -> Vec<(&'static str, &'static str)> {
         ("MDE platform (mde-comp, mde-shell, mde-control, …)", "MIT"),
         ("smithay-drm-extras", "MIT"),
         ("Mackes-Carbon / Mackes-Carbon-Light icons", "Apache-2.0"),
-        ("Selawik UI font", "SIL OFL 1.1"),
+        ("Inter + Google Fonts UI/mono catalog", "SIL OFL 1.1"),
+        ("Selawik (optional UI choice)", "SIL OFL 1.1"),
         ("Cascadia Mono", "SIL OFL 1.1"),
+        ("Curated Nerd Fonts subset", "SIL OFL 1.1 / per-face"),
         ("iced, Smithay, and other Rust crates", "per-crate (see Cargo)"),
         ("Base OS packages", "Fedora project licenses"),
     ]

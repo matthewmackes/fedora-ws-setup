@@ -129,25 +129,41 @@ user_re = re.compile(r"^[a-z_][a-z0-9_-]*\$?$")
 item_re = re.compile(r"^[A-Za-z0-9_.:-]+$")
 users = data.get("users") or []
 items = data.get("items") or []
+remove_items = data.get("remove_items") or []
+uninstall_de = data.get("uninstall_de") or ""
+if uninstall_de is True:
+    uninstall_de = "all"
+uninstall_de = str(uninstall_de).strip()
+if uninstall_de not in ("", "xfce", "mde", "pipedal", "all"):
+    raise SystemExit("invalid uninstall_de")
 if any(not user_re.match(str(u)) for u in users):
     raise SystemExit("invalid user")
 if any(not item_re.match(str(i)) for i in items):
     raise SystemExit("invalid item")
+if any(not item_re.match(str(i)) for i in remove_items):
+    raise SystemExit("invalid remove_items")
 out = pathlib.Path(dest)
 (out / "de").write_text(de + "\n", encoding="utf-8")
 (out / "mde_profile").write_text(profile + "\n", encoding="utf-8")
 (out / "users").write_text("".join(f"{u}\n" for u in users), encoding="utf-8")
 (out / "items").write_text("".join(f"{i}\n" for i in items), encoding="utf-8")
+(out / "remove_items").write_text("".join(f"{i}\n" for i in remove_items), encoding="utf-8")
+(out / "uninstall_de").write_text(uninstall_de + "\n", encoding="utf-8")
 PY
   WS_DE="$(tr -d '\n' <"$dir/de")"
   WS_MDE_PROFILE="$(tr -d '\n' <"$dir/mde_profile" 2>/dev/null || echo workstation)"
   WS_TARGET_USERS=()
   WS_SELECTED_ITEMS=()
+  WS_REMOVE_ITEMS=()
+  WS_UNINSTALL_DE="$(tr -d '\n' <"$dir/uninstall_de" 2>/dev/null || true)"
   if [[ -s "$dir/users" ]]; then
     mapfile -t WS_TARGET_USERS <"$dir/users"
   fi
   if [[ -s "$dir/items" ]]; then
     mapfile -t WS_SELECTED_ITEMS <"$dir/items"
+  fi
+  if [[ -s "$dir/remove_items" ]]; then
+    mapfile -t WS_REMOVE_ITEMS <"$dir/remove_items"
   fi
   rm -rf "$dir"
   local filtered=() u local_u
@@ -164,7 +180,7 @@ PY
     WS_TARGET_USERS=("${filtered[@]}")
   fi
   de_mark_switch
-  info "Apply choices: de=$WS_DE users=${WS_TARGET_USERS[*]:-none} items=${#WS_SELECTED_ITEMS[@]} switch=$WS_DE_SWITCH"
+  info "Apply choices: de=$WS_DE users=${WS_TARGET_USERS[*]:-none} items=${#WS_SELECTED_ITEMS[@]} remove=${#WS_REMOVE_ITEMS[@]} uninstall_de=${WS_UNINSTALL_DE:-none} switch=$WS_DE_SWITCH"
   wizard_apply
 }
 
@@ -181,10 +197,12 @@ wizard_apply() {
   local steps=(
     "Snapshot before changes"
     "Remove previous desktop"
+    "Uninstall desktop experience"
     "Base desktop"
     "Core hardening"
     "Surface baseline"
     "Look / themes"
+    "Remove selected catalog items"
     "Selected upgrades"
     "Snapshot after changes"
     "Save desktop state"
@@ -197,13 +215,15 @@ wizard_apply() {
     case "$i" in
       0) harden_install_snapper; snapshot_create "ws-setup pre" ;;
       1) de_remove_other ;;
-      2) base_apply ;;
-      3) hardening_apply ;;
-      4) surface_apply ;;
-      5) look_apply_all_users ;;
-      6) cli_apply_extras; catalog_apply_selected ;;
-      7) snapshot_create "ws-setup post" ;;
-      8) de_save_state ;;
+      2) de_uninstall_current ;;
+      3) base_apply ;;
+      4) hardening_apply ;;
+      5) surface_apply ;;
+      6) look_apply_all_users ;;
+      7) catalog_remove_selected ;;
+      8) cli_apply_extras; catalog_apply_selected ;;
+      9) snapshot_create "ws-setup post" ;;
+      10) de_save_state ;;
     esac
     ui_phase_done "${steps[i]}" 1
   done
@@ -217,6 +237,8 @@ run_noninteractive() {
   info "Noninteractive mode: all local users, no catalog upgrades, desktop=$WS_DE"
   WS_TARGET_USERS=("${WS_LOCAL_USERS[@]}")
   WS_SELECTED_ITEMS=()
+  WS_REMOVE_ITEMS=()
+  WS_UNINSTALL_DE=""
   info "$(preflight_text)"
   info "$(base_summary_text)"
   wizard_apply
@@ -226,12 +248,14 @@ run_noninteractive() {
 
 run_installer() {
   ui_prepare_display
-  ui_ensure_anaconda
-  local model
+  ui_ensure_setup_ui
+  local model bin
   model="$(mktemp)"
   ui_write_model "$model"
-  info "Opening the Anaconda installer"
-  python3 "$WS_ROOT/lib/anaconda_ui.py" --model "$model" --script "$WS_ROOT/fedora-ws-setup.sh"
+  bin="$(ui_setup_ui_bin)" || die "mde-setup-ui binary missing after ensure"
+  info "Opening the Rust setup UI ($bin)"
+  # anaconda_ui.py is no longer the live graphical path (compile-model only).
+  "$bin" --model "$model" --script "$WS_ROOT/fedora-ws-setup.sh"
   rm -f "$model"
 }
 

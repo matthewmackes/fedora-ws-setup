@@ -190,11 +190,20 @@ fn main() -> Result<(), iced_layershell::Error> {
             keyboard_interactivity: KeyboardInteractivity::None,
             ..Default::default()
         },
-        fonts: mde_theme::font_bytes()
-            .into_iter()
-            .map(std::borrow::Cow::from)
-            .collect(),
-        default_font: iced::Font::with_name(mde_theme::FONT),
+        fonts: {
+            let cfg = mde_config::MdeConfig::load().unwrap_or_default();
+            let ui = mde_theme::ui_font(&cfg.active().theme);
+            let mono = mde_theme::mono_font(&cfg.active().theme);
+            mde_theme::font_bytes_selected(ui, mono)
+                .into_iter()
+                .map(std::borrow::Cow::from)
+                .collect()
+        },
+        default_font: {
+            let cfg = mde_config::MdeConfig::load().unwrap_or_default();
+            let ui = mde_theme::ui_font(&cfg.active().theme).to_string();
+            iced::Font::with_name(Box::leak(ui.into_boxed_str()))
+        },
         ..Default::default()
     })
 }

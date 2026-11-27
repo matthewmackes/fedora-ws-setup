@@ -24,24 +24,45 @@ echo "Building Neighbourhood Music…"
   CARGO_TARGET_DIR="$TARGET_DIR" cargo build --release -p mde-music
 )
 
-install -D -m 0755 "$TARGET_DIR/release/neighbourhood-music" \
-  "$PREFIX/bin/neighbourhood-music"
+install_prefix() {
+  local prefix="$1"
+  local bin_dir="$prefix/bin"
+  if [[ ! -d "$bin_dir" ]] && ! mkdir -p "$bin_dir" 2>/dev/null; then
+    echo "Skipping $prefix (not writable)"
+    return 0
+  fi
+  if [[ ! -w "$bin_dir" ]]; then
+    echo "Skipping $prefix (not writable)"
+    return 0
+  fi
+  install -D -m 0755 "$TARGET_DIR/release/neighbourhood-music" \
+    "$prefix/bin/neighbourhood-music"
+  local desktop_tmp
+  desktop_tmp="$(mktemp)"
+  sed -e "s|^Exec=.*|Exec=$prefix/bin/neighbourhood-music|" \
+      -e "s|^TryExec=.*|TryExec=$prefix/bin/neighbourhood-music|" \
+      "$CRATE_DATA/neighbourhood-music.desktop" >"$desktop_tmp"
+  install -D -m 0644 "$desktop_tmp" \
+    "$prefix/share/applications/neighbourhood-music.desktop"
+  rm -f "$desktop_tmp"
+  install -D -m 0644 "$CRATE_DATA/style.css" \
+    "$prefix/share/neighbourhood-music/style.css"
+  if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "$prefix/share/applications" 2>/dev/null || true
+  fi
+  echo "Installed neighbourhood-music → $prefix/bin/neighbourhood-music"
+}
 
-# Desktop entry must use an absolute Exec — MDE/Sway sessions often omit ~/.local/bin from PATH.
-DESKTOP_SRC="$CRATE_DATA/neighbourhood-music.desktop"
-DESKTOP_TMP="$(mktemp)"
-sed -e "s|^Exec=.*|Exec=$PREFIX/bin/neighbourhood-music|" \
-    -e "s|^TryExec=.*|TryExec=$PREFIX/bin/neighbourhood-music|" \
-    "$DESKTOP_SRC" >"$DESKTOP_TMP"
-install -D -m 0644 "$DESKTOP_TMP" \
-  "$PREFIX/share/applications/neighbourhood-music.desktop"
-rm -f "$DESKTOP_TMP"
-
-install -D -m 0644 "$CRATE_DATA/style.css" \
-  "$PREFIX/share/neighbourhood-music/style.css"
-
-if command -v update-desktop-database >/dev/null 2>&1; then
-  update-desktop-database "$PREFIX/share/applications" 2>/dev/null || true
+# The requested prefix, plus the other one when this process can write it.
+# ~/.local/bin is ahead of /usr/bin on PATH, so the two copies must match.
+install_prefix "$PREFIX"
+if [[ "$PREFIX" == /usr && -n "${SUDO_USER:-}" ]]; then
+  user_home="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+  if [[ -n "$user_home" ]]; then
+    install_prefix "$user_home/.local"
+  fi
+elif [[ "$PREFIX" != /usr ]]; then
+  install_prefix /usr
 fi
 
 # Runtime deps hint (RPM/script consumers)
@@ -53,4 +74,4 @@ gstreamer1-plugins-good
 gstreamer1-plugins-ugly-free
 EOF
 
-echo "Installed neighbourhood-music → $PREFIX/bin/neighbourhood-music"
+echo "Release artifact: $TARGET_DIR/release/neighbourhood-music"

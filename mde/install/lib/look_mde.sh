@@ -14,10 +14,13 @@ SWAY_PAD_BORDER="#e0e0e0"
 SWAY_PANEL_BG="#f3f3f3"
 SWAY_PANEL_HEIGHT=48
 # Fluent type ramp in points: Caption 12px, Body 14px, Body Strong 14px semibold.
-SWAY_FONT="Selawik"
-SWAY_FONT_CAPTION="9"
-SWAY_FONT_BODY="10.5"
-SWAY_FONT_MONO="Cascadia Mono"
+SWAY_FONT="${SWAY_FONT:-Inter}"
+SWAY_FONT_CAPTION="${SWAY_FONT_CAPTION:-9}"
+SWAY_FONT_BODY="${SWAY_FONT_BODY:-10.5}"
+SWAY_FONT_MONO="${SWAY_FONT_MONO:-Cascadia Mono}"
+# Keep shared LOOK_* in sync for GTK / greeter / xfconf paths.
+LOOK_FONT="${SWAY_FONT} ${SWAY_FONT_BODY}"
+LOOK_TITLE_FONT="${SWAY_FONT} ${SWAY_FONT_CAPTION}"
 # Laptop panel scale is derived from WS_SCALE_TIER / EDID PPI (see sway_panel_scale).
 SWAY_CURSOR="Adwaita"
 SWAY_CURSOR_SIZE=24
@@ -1115,8 +1118,8 @@ EOF
 }
 
 # ClearType-like rendering for apps that read fontconfig rather than
-# GSettings (Qt, Electron, Firefox), and Segoe UI requests served by Selawik,
-# Microsoft's metric-compatible stand-in.
+# GSettings (Qt, Electron, Firefox). Segoe UI aliases map to the selected
+# MDE UI font (default Inter).
 sway_fontconfig() {
   cat <<EOF
 <?xml version="1.0"?>
@@ -1129,6 +1132,14 @@ sway_fontconfig() {
     <edit name="rgba" mode="assign"><const>rgb</const></edit>
     <edit name="lcdfilter" mode="assign"><const>lcddefault</const></edit>
   </match>
+  <alias binding="same">
+    <family>sans-serif</family>
+    <prefer><family>${SWAY_FONT}</family></prefer>
+  </alias>
+  <alias binding="same">
+    <family>monospace</family>
+    <prefer><family>${SWAY_FONT_MONO}</family></prefer>
+  </alias>
   <alias binding="same">
     <family>Segoe UI</family>
     <prefer><family>${SWAY_FONT}</family></prefer>
