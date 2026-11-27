@@ -13,8 +13,19 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::OnceLock;
 
 fn peak_bits() -> &'static AtomicU32 {
-    static PEAK: AtomicU32 = AtomicU32::new(0);
+    // -120.0_f32 — silence until the audio thread publishes a level.
+    static PEAK: AtomicU32 = AtomicU32::new(0xC2F0_0000);
     &PEAK
+}
+
+fn last_publish_ms() -> &'static AtomicU64 {
+    static LAST: AtomicU64 = AtomicU64::new(0);
+    &LAST
+}
+
+fn now_ms() -> u64 {
+    static START: OnceLock<std::time::Instant> = OnceLock::new();
+    START.get_or_init(std::time::Instant::now).elapsed().as_millis() as u64 + 1
 }
 
 fn cpu_us() -> &'static AtomicU64 {
@@ -26,18 +37,48 @@ fn cpu_us() -> &'static AtomicU64 {
 pub fn publish_levels(peak_db: f64, process_us: u64) {
     peak_bits().store((peak_db as f32).to_bits(), Ordering::Relaxed);
     cpu_us().store(process_us, Ordering::Relaxed);
+    last_publish_ms().store(now_ms(), Ordering::Relaxed);
 }
 
+/// Latest post-EQ peak. Reads as silence when the audio thread has stopped publishing
+/// (paused / stopped), instead of freezing on the last loud block.
 pub fn snapshot_peak_db() -> f64 {
-    f32::from_bits(peak_bits().load(Ordering::Relaxed)) as f64
+    peak_or_silence(
+        last_publish_ms().load(Ordering::Relaxed),
+        now_ms(),
+        f32::from_bits(peak_bits().load(Ordering::Relaxed)) as f64,
+    )
+}
+
+fn peak_or_silence(last_ms: u64, now_ms: u64, peak_db: f64) -> f64 {
+    if last_ms == 0 || now_ms.saturating_sub(last_ms) > 400 {
+        -120.0
+    } else {
+        peak_db
+    }
 }
 
 pub fn snapshot_cpu_us() -> u64 {
     cpu_us().load(Ordering::Relaxed)
 }
 
+/// ISO octave centres. (The old list reused a legacy 10-band set whose top three
+/// bands sat at 12/14/16 kHz and left 31–500 Hz and 2–8 kHz uncovered.)
 pub const BAND_HZ: [f64; 10] = [
-    60.0, 170.0, 310.0, 600.0, 1_000.0, 3_000.0, 6_000.0, 12_000.0, 14_000.0, 16_000.0,
+    31.5, 63.0, 125.0, 250.0, 500.0, 1_000.0, 2_000.0, 4_000.0, 8_000.0, 16_000.0,
+];
+
+/// Graphic EQ gain range shown and enforced everywhere (dB).
+pub const GAIN_MIN: f64 = -12.0;
+pub const GAIN_MAX: f64 = 12.0;
+/// Octave-spaced bands overlap correctly at Q ≈ √2.
+pub const BAND_Q: f64 = 1.414;
+
+/// 1/3-octave analyzer centres, 25 Hz – 20 kHz.
+pub const THIRD_HZ: [f64; 30] = [
+    25.0, 31.5, 40.0, 50.0, 63.0, 80.0, 100.0, 125.0, 160.0, 200.0, 250.0, 315.0, 400.0, 500.0,
+    630.0, 800.0, 1_000.0, 1_250.0, 1_600.0, 2_000.0, 2_500.0, 3_150.0, 4_000.0, 5_000.0,
+    6_300.0, 8_000.0, 10_000.0, 12_500.0, 16_000.0, 20_000.0,
 ];
 
 fn goertzel_power(samples: &[f32], freq_hz: f64, sample_rate: f64) -> f64 {
@@ -53,6 +94,40 @@ fn goertzel_power(samples: &[f32], freq_hz: f64, sample_rate: f64) -> f64 {
     }
     let _ = n;
     (s1 * s1 + s2 * s2 - coeff * s1 * s2).max(1e-18)
+}
+
+/// Hann-window a mono block (cuts spectral leakage from the rectangular window).
+fn hann(samples: &[f32]) -> Vec<f32> {
+    let n = samples.len();
+    if n < 2 {
+        return samples.to_vec();
+    }
+    samples
+        .iter()
+        .enumerate()
+        .map(|(i, x)| {
+            let w = 0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / (n - 1) as f64).cos();
+            *x * w as f32
+        })
+        .collect()
+}
+
+/// 1/3-octave levels (dBFS) for a mono block: a full-scale sine reads ≈ 0 dB in its band.
+/// Run this on the UI side, never inside the audio callback.
+pub fn third_octave_levels(mono: &[f32], rate: f64) -> [f64; 30] {
+    let mut out = [-100.0; 30];
+    if mono.len() < 1024 {
+        return out;
+    }
+    let windowed = hann(mono);
+    // Hann coherent gain is 0.5, so a full-scale sine has amplitude N/4.
+    let norm = 20.0 * (mono.len() as f64 / 4.0).log10();
+    for (i, hz) in THIRD_HZ.iter().enumerate() {
+        if *hz < rate / 2.0 {
+            out[i] = (10.0 * goertzel_power(&windowed, *hz, rate).log10() - norm).clamp(-100.0, 6.0);
+        }
+    }
+    out
 }
 
 /// Gain for one block. Advanced off ignores dynamic and spectral flags.
@@ -76,7 +151,7 @@ pub fn block_gain(
         let lean = (band_db * 0.1).clamp(-6.0, 6.0);
         gain = gain * 0.8 + lean * 0.2;
     }
-    gain.clamp(-24.0, 12.0)
+    gain.clamp(GAIN_MIN, GAIN_MAX)
 }
 
 fn band_level_db(samples: &[f32], freq_hz: f64, sample_rate: f64) -> f64 {
@@ -94,7 +169,7 @@ pub fn gains_from_samples(samples: &[f32], sample_rate: f64) -> [f64; 10] {
         return [0.0; 10];
     }
     let step = (samples.len() / 48_000).max(1);
-    let taken: Vec<f32> = samples.iter().step_by(step).copied().take(48_000).collect();
+    let taken: Vec<f32> = hann(&samples.iter().step_by(step).copied().take(48_000).collect::<Vec<f32>>());
     let power: Vec<f64> = BAND_HZ
         .iter()
         .map(|hz| goertzel_power(&taken, *hz, sample_rate))
@@ -102,7 +177,7 @@ pub fn gains_from_samples(samples: &[f32], sample_rate: f64) -> [f64; 10] {
     let mean = power.iter().map(|p| p.log10()).sum::<f64>() / power.len() as f64;
     let mut gains = [0.0; 10];
     for (i, p) in power.iter().enumerate() {
-        gains[i] = (10.0 * (p.log10() - mean)).clamp(-12.0, 12.0);
+        gains[i] = (10.0 * (p.log10() - mean)).clamp(GAIN_MIN, GAIN_MAX);
     }
     gains
 }
@@ -169,7 +244,7 @@ pub fn eq_preset_from_json(value: &serde_json::Value) -> Result<LoadedEqPreset, 
             let mut out = [0.0; 10];
             for (i, n) in gains.iter().enumerate() {
                 let gain = n.as_f64().ok_or_else(|| "a gain is not a number".to_string())?;
-                out[i] = gain.clamp(-24.0, 12.0);
+                out[i] = gain.clamp(GAIN_MIN, GAIN_MAX);
             }
             return Ok(LoadedEqPreset {
                 name,
@@ -196,7 +271,7 @@ pub fn eq_preset_from_json(value: &serde_json::Value) -> Result<LoadedEqPreset, 
                 .get("gain")
                 .and_then(|g| g.as_f64())
                 .unwrap_or(0.0)
-                .clamp(-24.0, 12.0);
+                .clamp(GAIN_MIN, GAIN_MAX);
         }
         return Ok(LoadedEqPreset {
             name,
@@ -218,7 +293,7 @@ pub fn eq_preset_from_json(value: &serde_json::Value) -> Result<LoadedEqPreset, 
             .get("gain")
             .and_then(|g| g.as_f64())
             .unwrap_or(0.0)
-            .clamp(-24.0, 12.0);
+            .clamp(GAIN_MIN, GAIN_MAX);
         let (index, dist) = nearest_band(freq);
         if dist < best[index] {
             best[index] = dist;
@@ -239,6 +314,7 @@ pub struct GraphicEq {
     bands: Vec<StereoPeak>,
     built: [f64; 10],
     built_rate: f64,
+    built_centers: [f64; 10],
     peak_db: f64,
     morph_from: [f64; 10],
     morph_to: [f64; 10],
@@ -266,6 +342,7 @@ impl GraphicEq {
             bands: Vec::new(),
             built: [1.0; 10],
             built_rate: 0.0,
+            built_centers: [0.0; 10],
             peak_db: -120.0,
             morph_from: [0.0; 10],
             morph_to: [0.0; 10],
@@ -296,6 +373,12 @@ impl GraphicEq {
         self.spectrum
     }
 
+    /// Recent post-EQ mono samples and the sample rate, for UI-side analysis.
+    /// Copying ~2k floats under the lock is cheap; the FFT-ish work happens outside it.
+    pub fn recent_mono(&self) -> (Vec<f32>, f64) {
+        (self.recent.chunks(2).map(|f| f[0]).collect(), self.rate)
+    }
+
     /// Downsampled post-EQ waveform for the Stage artwork view.
     pub fn waveform(&self, points: usize) -> Vec<f32> {
         let points = points.max(2);
@@ -317,7 +400,7 @@ impl GraphicEq {
 
     pub fn nudge_selected(&mut self, delta_db: f64) -> f64 {
         let index = self.selected;
-        let next = (self.gains[index] + delta_db).clamp(-24.0, 12.0);
+        let next = (self.gains[index] + delta_db).clamp(GAIN_MIN, GAIN_MAX);
         self.set_gain(index, next);
         next
     }
@@ -395,7 +478,7 @@ impl GraphicEq {
 
     pub fn set_gain(&mut self, index: usize, db: f64) {
         if index < 10 {
-            self.gains[index] = db.clamp(-24.0, 12.0);
+            self.gains[index] = db.clamp(GAIN_MIN, GAIN_MAX);
         }
     }
 
@@ -417,19 +500,28 @@ impl GraphicEq {
         }
     }
 
+    /// Bring the filters up to date. Coefficients are retuned in place so the filter
+    /// memory survives a gain change (rebuilding reset it and clicked on every drag step).
     fn ensure(&mut self) {
-        if self.bands.len() == 10 && self.built == self.gains && (self.built_rate - self.rate).abs() < 1.0
-        {
+        let rate_changed = (self.built_rate - self.rate).abs() >= 1.0;
+        if self.bands.len() == 10 && self.built == self.gains && !rate_changed && self.built_centers == self.centers {
             return;
         }
-        self.bands = self
-            .centers
-            .iter()
-            .zip(self.gains)
-            .map(|(hz, gain)| StereoPeak::new(self.rate, *hz, 1.2, gain))
-            .collect();
+        if self.bands.len() != 10 {
+            self.bands = self
+                .centers
+                .iter()
+                .zip(self.gains)
+                .map(|(hz, gain)| StereoPeak::new(self.rate, *hz, BAND_Q, gain))
+                .collect();
+        } else {
+            for i in 0..10 {
+                self.bands[i].retune(self.rate, self.centers[i], BAND_Q, self.gains[i]);
+            }
+        }
         self.built = self.gains;
         self.built_rate = self.rate;
+        self.built_centers = self.centers;
     }
 
     pub fn process_interleaved(&mut self, samples: &mut [f32]) {
@@ -451,6 +543,7 @@ impl GraphicEq {
                 band.process_interleaved(samples);
             }
         } else {
+            self.ensure();
             let mono: Vec<f32> = samples.chunks(2).map(|frame| frame[0]).collect();
             for index in 0..10 {
                 let band_db = band_level_db(&mono, self.centers[index], self.rate);
@@ -461,9 +554,12 @@ impl GraphicEq {
                     self.spectral[index],
                     band_db,
                 );
-                let mut band = StereoPeak::new(self.rate, self.centers[index], 1.2, gain);
-                band.process_interleaved(samples);
+                // Retune the persistent band (state kept) instead of building a new one.
+                self.bands[index].retune(self.rate, self.centers[index], BAND_Q, gain.clamp(GAIN_MIN, GAIN_MAX));
+                self.bands[index].process_interleaved(samples);
             }
+            // The next plain block must restore the static gains.
+            self.built = [f64::NAN; 10];
         }
         if self.delta {
             for (sample, dry) in samples.iter_mut().zip(dry) {
@@ -582,6 +678,16 @@ impl Biquad {
         }
     }
 
+    /// Replace the coefficients, keeping `z1`/`z2` so audio does not click.
+    pub fn retune_peaking(&mut self, sample_rate: f64, freq_hz: f64, q: f64, gain_db: f64) {
+        let fresh = Biquad::peaking(sample_rate, freq_hz, q, gain_db);
+        self.b0 = fresh.b0;
+        self.b1 = fresh.b1;
+        self.b2 = fresh.b2;
+        self.a1 = fresh.a1;
+        self.a2 = fresh.a2;
+    }
+
     pub fn low_shelf(sample_rate: f64, freq_hz: f64, gain_db: f64) -> Self {
         shelf(sample_rate, freq_hz, gain_db, true)
     }
@@ -680,6 +786,12 @@ impl StereoPeak {
     pub fn response_db(&self, freq_hz: f64, sample_rate: f64) -> f64 {
         self.left.response_db(freq_hz, sample_rate)
     }
+
+    /// New coefficients, same filter memory.
+    pub fn retune(&mut self, sample_rate: f64, freq_hz: f64, q: f64, gain_db: f64) {
+        self.left.retune_peaking(sample_rate, freq_hz, q, gain_db);
+        self.right.retune_peaking(sample_rate, freq_hz, q, gain_db);
+    }
 }
 
 fn rms(samples: &[f32]) -> f64 {
@@ -693,6 +805,9 @@ fn rms(samples: &[f32]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The meter atomics are process-global; serialize the tests that touch them.
+    static METER_GUARD: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
 
     fn tone(freq: f64, sr: f64, n: usize) -> Vec<f32> {
         (0..n)
@@ -836,13 +951,13 @@ mod tests {
             "mystery": { "kept": false },
             "global": { "character": "Tube", "phase_mode": "Natural", "drive": 30 },
             "bands": [
-                { "shape": "Bell", "freq": 3200, "gain": -1.5, "q": 2.2, "dyn": "Dynamic" },
+                { "shape": "Bell", "freq": 1100, "gain": -1.5, "q": 2.2, "dyn": "Dynamic" },
                 { "shape": "Low Cut", "slope": 24, "freq": 80 },
                 { "shape": "NotAShape", "freq": 100, "gain": 9 }
             ]
         });
         let loaded = eq_preset_from_json(&upstream).expect("upstream");
-        assert!((loaded.gains[5] - -1.5).abs() < 0.01, "3 kHz {:?}", loaded.gains);
+        assert!((loaded.gains[5] - -1.5).abs() < 0.01, "1 kHz {:?}", loaded.gains);
         assert!(loaded.gains.iter().enumerate().all(|(i, g)| i == 5 || *g == 0.0));
         assert!(loaded.centers.is_none());
     }
@@ -865,12 +980,12 @@ mod tests {
             .collect();
         let mut plain = GraphicEq::new();
         plain.set_rate(sr);
-        plain.set_gain(4, 12.0);
-        plain.set_dynamic_band(4, true);
+        plain.set_gain(5, 12.0);
+        plain.set_dynamic_band(5, true);
         let mut ducked = GraphicEq::new();
         ducked.set_rate(sr);
-        ducked.set_gain(4, 12.0);
-        ducked.set_dynamic_band(4, true);
+        ducked.set_gain(5, 12.0);
+        ducked.set_dynamic_band(5, true);
         ducked.set_advanced(true);
         let mut dry = tone.clone();
         plain.process_interleaved(&mut dry);
@@ -885,7 +1000,15 @@ mod tests {
     }
 
     #[test]
+    fn meter_reads_silence_when_the_audio_thread_goes_quiet() {
+        assert_eq!(peak_or_silence(0, 5_000, -3.0), -120.0, "never published");
+        assert_eq!(peak_or_silence(1_000, 1_200, -3.0), -3.0, "fresh");
+        assert_eq!(peak_or_silence(1_000, 1_500, -3.0), -120.0, "stale after 400 ms");
+    }
+
+    #[test]
     fn meter_snapshot_roundtrips_without_the_eq_lock() {
+        let _g = METER_GUARD.lock();
         publish_levels(-12.5, 40);
         let db = snapshot_peak_db();
         assert!((db - -12.5).abs() < 0.05, "{db}");
@@ -900,7 +1023,67 @@ mod tests {
             .collect();
         let gains = gains_from_samples(&samples, sr);
         let low = gains[0];
-        let mid = gains[4];
-        assert!(mid > low + 3.0, "1 kHz {mid} vs 60 Hz {low}");
+        let mid = gains[5];
+        assert!(mid > low + 3.0, "1 kHz {mid} vs 31.5 Hz {low}");
+    }
+
+    #[test]
+    fn boosting_a_band_raises_a_tone_at_that_band_by_about_the_gain() {
+        let sr = 48_000.0;
+        let n = 24_000;
+        for (index, hz) in BAND_HZ.iter().enumerate() {
+            let tone: Vec<f32> = (0..n)
+                .map(|i| (2.0 * std::f64::consts::PI * hz * i as f64 / sr).sin() as f32 * 0.25)
+                .flat_map(|s| [s, s])
+                .collect();
+            let mut eq = GraphicEq::new();
+            eq.set_rate(sr);
+            eq.set_gain(index, 9.0);
+            let mut out = tone.clone();
+            eq.process_interleaved(&mut out);
+            let gain_db = 20.0 * (rms(&out[n..]) / rms(&tone[n..])).log10();
+            // Neighbouring-band overlap is zero here (only this band is set).
+            assert!((gain_db - 9.0).abs() < 0.7, "band {index} ({hz} Hz) gave {gain_db:.2} dB");
+        }
+    }
+
+    #[test]
+    fn changing_gain_keeps_filter_memory_so_audio_does_not_click() {
+        let sr = 48_000.0;
+        let tone: Vec<f32> = (0..9_600)
+            .map(|i| (2.0 * std::f64::consts::PI * 1000.0 * i as f64 / sr).sin() as f32 * 0.5)
+            .flat_map(|s| [s, s])
+            .collect();
+        let mut eq = GraphicEq::new();
+        eq.set_rate(sr);
+        eq.set_gain(5, 6.0);
+        let mut a = tone[..9_600].to_vec();
+        eq.process_interleaved(&mut a);
+        eq.set_gain(5, 7.0); // a drag step
+        let mut b = tone[9_600..].to_vec();
+        eq.process_interleaved(&mut b);
+        // The jump across the block boundary must stay small relative to the signal.
+        let step = (b[0] - a[a.len() - 2]).abs();
+        assert!(step < 0.35, "discontinuity {step}");
+    }
+
+    #[test]
+    fn third_octave_analyzer_reads_a_full_scale_tone_near_zero_dbfs() {
+        let sr = 48_000.0;
+        let mut eq = GraphicEq::new();
+        eq.set_rate(sr);
+        let tone: Vec<f32> = (0..4_096)
+            .map(|i| (2.0 * std::f64::consts::PI * 1000.0 * i as f64 / sr).sin() as f32)
+            .flat_map(|s| [s, s])
+            .collect();
+        for chunk in tone.chunks(512) {
+            let mut c = chunk.to_vec();
+            eq.process_interleaved(&mut c);
+        }
+        let (mono, rate) = eq.recent_mono();
+        let bands = third_octave_levels(&mono, rate);
+        let k = THIRD_HZ.iter().position(|h| *h == 1_000.0).unwrap();
+        assert!(bands[k] > -4.0 && bands[k] < 3.0, "1 kHz band reads {:.1} dBFS", bands[k]);
+        assert!(bands[k] > bands[3] + 25.0, "50 Hz band should be far below");
     }
 }

@@ -3357,38 +3357,32 @@ fn build_eq(state: Rc<AppState>) -> GtkBox {
     h.add_css_class("nm-heading");
     h.set_halign(Align::Start);
     page.append(&h);
+    // Same ten-band sliders as the Audiophile tab (ISO octave centres, ±12 dB).
+    page.append(&super::audiophile::eq_sliders(&state, 140));
     let row = GtkBox::new(Orientation::Horizontal, 8);
-    let bands = ["60", "170", "310", "600", "1k", "3k", "6k", "12k", "14k", "16k"];
-    for (i, name) in bands.iter().enumerate() {
-        let col = GtkBox::new(Orientation::Vertical, 4);
-        let scale = Scale::with_range(Orientation::Vertical, -24.0, 12.0, 0.5);
-        scale.set_inverted(true);
-        scale.set_value(state.player.eq_bands()[i]);
-        scale.set_vexpand(true);
-        scale.set_height_request(120);
-        let st = state.clone();
-        scale.connect_value_changed(move |s| {
-            st.player.set_eq_band(i, s.value());
-        });
-        col.append(&scale);
-        col.append(&Label::new(Some(name)));
-        row.append(&col);
-    }
-    page.append(&row);
     let bypass = Button::with_label(if state.player.eq_bypass() {
         "EQ bypassed"
     } else {
         "EQ active"
     });
     bypass.add_css_class("nm-chip");
-    bypass.set_halign(Align::Start);
     let st = state.clone();
     bypass.connect_clicked(move |b| {
         let on = !st.player.eq_bypass();
         st.player.set_eq_bypass(on);
         b.set_label(if on { "EQ bypassed" } else { "EQ active" });
     });
-    page.append(&bypass);
+    let flat = Button::with_label("Reset flat");
+    flat.add_css_class("nm-chip");
+    let st = state.clone();
+    flat.connect_clicked(move |_| {
+        for i in 0..10 {
+            st.player.set_eq_band(i, 0.0);
+        }
+    });
+    row.append(&bypass);
+    row.append(&flat);
+    page.append(&row);
     page
 }
 

@@ -292,7 +292,7 @@ impl Player {
         if band >= 10 {
             return;
         }
-        g.eq_bands[band] = db.clamp(-24.0, 12.0);
+        g.eq_bands[band] = db.clamp(crate::eq::GAIN_MIN, crate::eq::GAIN_MAX);
         crate::eq::shared_eq()
             .lock()
             .set_gain(band, g.eq_bands[band]);

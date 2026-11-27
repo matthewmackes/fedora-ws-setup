@@ -2587,6 +2587,14 @@ Opened **2026-11-27** from the request that *all parts of the app* use more imme
 | **Today** | Bare "Loading…" labels in ~12 places |
 | **Accept** | Every wait shows a skeleton or spinner, and new content eases in instead of popping |
 
+#### W691 — Audiophile interface + EQ engine repair (P0)
+| | |
+|---|---|
+| **Status** | done — 2026-11-27, verified live on this seat: boosting 125 Hz by ~+9 dB on the graph raised the 100–160 Hz analyzer bars from ≈ −15 to ≈ −5 dBFS during playback. 68 tests pass. Built to `~/.local/bin`; **/usr/bin not yet synced** |
+| **Was broken** | Whole page overflowed the window; graph was a bare flat line (no grid/labels/handles, wrong zero line); drag re-picked the nearest band on every move; analyzer was white boxes; Match was an empty box; Dynamics was 20 unstyled checkboxes; GL path always fell back to CPU. Engine: legacy bands (60/170/310/600/1k/3k/6k/12k/14k/16k Hz) left 31–500 Hz and 2–8 kHz uncovered; every gain change rebuilt the filters (state reset → clicks); dynamic mode built new filters every block; gain range −24…+12; peak meter read 0 dBFS at rest and froze after stop; file-match used a rectangular window |
+| **Fixed** | **Engine** (`eq/`): ISO octave centres 31.5 Hz–16 kHz at Q √2; filter state kept across gain/dynamic retunes; ±12 dB everywhere; Hann-windowed file match; 1/3-octave analyzer computed UI-side (not in the audio callback); mono/stereo caps so surround is downmixed; meter starts at −120 dB and goes silent when audio stops. New tests: per-band gain accuracy (±0.7 dB), click-free gain steps, analyzer ≈ 0 dBFS for a full-scale tone, meter staleness. **UI** (`ui/audiophile.rs`): Graphic tab with log-frequency grid, dB scale, 10 draggable band handles (band locked at drag start), scroll ±0.5 dB, double-click reset, arrow keys, live spectrum, Bypass/Delta/Reset, peak meter, 10 sliders; Bands tab (Hz/note entry + spin buttons); 30-band Analyzer with peak hold, tilt, freeze; Dynamics grid of per-band cards; Match tab with sketch-to-bands and file match; Presets with 8 built-ins + save/load/delete. Tools-page EQ now uses the same sliders. GL curve module and `gl` dependency removed |
+| **Todo** | Per-band Q / shapes (shelves, cuts) in the UI; per-source-kind EQ morph (W609); `/usr/bin` sync |
+
 ---
 
 ## Explicitly out of scope for this worklist

@@ -94,8 +94,11 @@ mod imp {
         fn allowed_caps() -> &'static gst::Caps {
             static CAPS: std::sync::OnceLock<gst::Caps> = std::sync::OnceLock::new();
             CAPS.get_or_init(|| {
+                // Mono or stereo only: the filter is channel-pair based, so playbin
+                // downmixes surround sources before they reach it.
                 gst_audio::AudioCapsBuilder::new()
                     .format(gst_audio::AudioFormat::F32le)
+                    .channels_range(1..=2)
                     .build()
             })
         }

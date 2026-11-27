@@ -756,7 +756,6 @@ window.nm-window button.nm-card:hover {
   border-radius: 999px;
   background-image: linear-gradient(160deg, #2b3a52, #121820);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65), 0 0 0 3px rgba(255, 255, 255, 0.14);
-  overflow: hidden;
 }
 .nm-artist-initial { font-size: 72px; font-weight: 800; color: rgba(255, 255, 255, 0.75); }
 .nm-artist-kicker { font-size: 12px; font-weight: 800; letter-spacing: 3px; color: #8ec8ff; }
@@ -779,3 +778,18 @@ window.nm-window button.nm-card:hover {
 .nm-detail-key { font-size: 13px; font-weight: 700; color: #8b939c; min-width: 96px; }
 .nm-detail-val { font-size: 15px; color: #f3f5f7; }
 .nm-photo { border-radius: 14px; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5); }
+
+/* —— Audiophile interface —— */
+.nm-audiophile .nm-eq-plot { min-height: 240px; border-radius: 14px; }
+.nm-eq-sliders { padding: 4px 6px 0 6px; }
+.nm-eq-val { font-size: 12px; font-weight: 700; color: #cfe6ff; min-width: 40px; }
+.nm-eq-sliders scale trough { min-width: 6px; min-height: 6px; background-color: rgba(255, 255, 255, 0.10); border-radius: 6px; }
+.nm-eq-sliders scale highlight { background-color: #6fc1ff; border-radius: 6px; }
+.nm-eq-sliders scale slider { min-width: 18px; min-height: 18px; margin: 0; padding: 0; background-color: #f3f5f7; border-radius: 999px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); }
+.nm-eq-sliders scale marks indicator { min-width: 8px; min-height: 1px; background-color: rgba(255, 255, 255, 0.35); }
+.nm-dyn-cell { padding: 12px 14px; border-radius: 14px; background-color: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.07); }
+.nm-peak block.filled { background-color: #6fc1ff; border-radius: 4px; }
+.nm-peak block.empty { background-color: rgba(255, 255, 255, 0.10); border-radius: 4px; }
+.nm-audiophile togglebutton.nm-chip:checked { background-color: #1ed760; color: #04120a; }
+.nm-audiophile entry.error { border-color: #e5484d; }
+.nm-audiophile switch:checked { background-color: #1ed760; }
