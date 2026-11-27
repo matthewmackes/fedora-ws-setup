@@ -39,30 +39,30 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 - [ ] Install and verify a real SSH mount end to end (needs `sudo`; see below).
 
 ### M2: Connecting dialog and error UX
-- [ ] Dialog: checklist, progress bar, collapsed live log, Cancel.
-- [ ] Success: open the folder in Files. Failure: Retry / Edit place / Copy log / auto-fix.
-- [ ] Host-key-changed flow with "Trust new key".
-- [ ] Polkit session caching.
+- [x] Modal dialog: step checklist, progress bar, collapsed Details log, Cancel (`ui/connect_dialog.rs`).
+- [x] Success closes the dialog and opens the folder in Files. Failure keeps it open with cause, fix, Retry / Edit place / Copy log.
+- [x] Auto-fixes: install missing package (pkexec dnf), trust new host key (pkexec ssh-keygen -R), re-enter password.
+- [~] Polkit session caching: relies on the existing `auth_admin_keep` action; not re-verified.
 
 ### M3: Key setup wizard
-- [ ] After first successful password connect, prompt "Set up passwordless access?".
-- [ ] Generate a per-place key in `/etc/network-neighbourhood/`, install on host, switch place to key auth, verify.
-- [ ] Failure and rollback handling.
+- [x] After a successful password connect to an SSH place, prompt "Set up passwordless access?" (not repeated after "Not now" in a session).
+- [x] `keys.rs`: ed25519 key per place in `/etc/network-neighbourhood/creds/<id>.key`, installed with ssh-copy-id, verified with BatchMode, rolled back on failure. D-Bus `HasSshKey` / `SetupSshKey`.
 
 ### M4: Wizard, status and history
-- [ ] Add Place wizard with Test connection step.
-- [ ] Offline detection, last-seen, background retry, notification.
-- [ ] Per-place "Last connection" and Activity page.
-- [ ] Automount default and per-place choice; `~/Network` symlinks.
+- [x] Add Place now connects through the Connecting dialog after save (was a silent background thread printing to stderr). Default policy is Automount (per-place choice kept).
+- [~] "Test connection" is the Save & connect step, not a separate pre-save probe.
+- [x] Daemon probes reachability every 30 s (`seen.json`); card shows Offline badge, dimmed, "last seen"; UI notifies when a place returns.
+- [x] History (`history.jsonl`, 200 cap), D-Bus `GetHistory`; "Activity" window in the command bar; existing inline last-connection status kept on each card.
+- [x] `~/Network/<name>` symlinks created after a successful connect.
 
-### M5: Media FUSE helper
-- [ ] Build and install `neighbourhood-mediafs` (Rust, read-only).
-- [ ] Jellyfin and Airsonic/Subsonic backends; By Artist / Album / Genre / Recently Added views.
-- [ ] Packaging in `data/network-neighbourhood/install.sh`.
+### M5: Media FUSE
+- [x] Subsonic and Jellyfin backends return flat entries; `media/views.rs` builds By Artist / By Album / By Genre / Recently Added (video: All / By Genre / Recently Added). 12 unit tests.
+- [x] Read-only. Helper failures and timeouts are now reported instead of always "succeeding".
+- [ ] Not exercised against a real Jellyfin/Airsonic server.
 
 ### M6: Redesign
-- [ ] Restyle to MDE theme; card layout for places.
+- [x] Colours from the MDE `Palette`; 12 px card radius; status stripe, protocol chip, last-seen line.
+- [ ] Not visually reviewed (launches clean; no screenshot taken).
 
-## Open items to confirm when starting
-- Which SSH host and which Jellyfin/Airsonic server to test against.
-- Whether M1 and M2 ship together (Q30 chose plan-first, so order is open).
+## Verification status
+30 unit tests pass (`cargo test -p mde-network-neighbourhood`). Nothing has run against the installed system daemon: install needs root (`sudo bash mde/data/network-neighbourhood/install.sh`).

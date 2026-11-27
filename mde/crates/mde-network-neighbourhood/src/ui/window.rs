@@ -1227,6 +1227,21 @@ fn build_place_card(
     if offline.is_some() {
         card.add_css_class("nn-offline");
     }
+    card.add_css_class(if mounted {
+        "nn-status-ok"
+    } else if offline.is_some() {
+        "nn-status-off"
+    } else if has_error {
+        "nn-status-err"
+    } else {
+        "nn-status-off"
+    });
+    let chip = Label::builder()
+        .label(place.protocol.group_label())
+        .css_classes(["nn-chip"])
+        .valign(Align::Center)
+        .build();
+    row.append(&chip);
     let badge = Label::builder()
         .label(if mounted {
             "Mounted"
@@ -1248,6 +1263,18 @@ fn build_place_card(
         .build();
     row.append(&badge);
     card.append(&row);
+    if offline.is_none() && !mounted {
+        let seen = REACH.with(|r| r.borrow().get(&place.id).and_then(|s| s.last_seen));
+        if let Some(ts) = seen {
+            card.append(
+                &Label::builder()
+                    .label(format!("Seen {}", crate::status::ago(ts, crate::status::now_secs())))
+                    .halign(Align::Start)
+                    .css_classes(["nn-hero-sub"])
+                    .build(),
+            );
+        }
+    }
     if let Some(text) = &offline {
         card.append(
             &Label::builder()

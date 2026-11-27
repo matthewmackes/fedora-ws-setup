@@ -10,15 +10,19 @@ pub fn load(density: &str) {
         theme.accent.as_str()
     };
     let dark = theme.dark;
-    let (bg, surface, surface2, text, muted, border, card) = if dark {
-        (
-            "#1c1c1c", "#202020", "#2b2b2b", "#ffffff", "#c5c5c5", "#3a3a3a", "#2c2c2c",
-        )
-    } else {
-        (
-            "#f3f3f3", "#f9f9f9", "#ffffff", "#1a1a1a", "#5d5d5d", "#e0e0e0", "#ffffff",
-        )
-    };
+    // Surfaces come from the active MDE theme so this app matches Music, Files and Settings.
+    let (bg, surface, surface2, text, muted, border, card) = (
+        theme.bg.as_str(),
+        theme.bg.as_str(),
+        theme.bg_elevated.as_str(),
+        theme.fg.as_str(),
+        theme.fg_muted.as_str(),
+        theme.border.as_str(),
+        theme.bg_elevated.as_str(),
+    );
+    let danger = if theme.danger.is_empty() { "#d13438" } else { theme.danger.as_str() };
+    let ok = if dark { "#6ccb5f" } else { "#107c10" };
+    let radius = mde_theme::FLYOUT_RADIUS as i32;
     let (pad, row_min) = match density {
         "compact" => (6, 40),
         "dense" => (4, 36),
@@ -85,10 +89,33 @@ window.nn-window {{
 .nn-card {{
   background-color: {card};
   border: 1px solid {border};
-  border-radius: 8px;
+  border-radius: {radius}px;
+  border-left: 4px solid {border};
   padding: {pad}px;
   margin: 6px 12px;
   min-height: {row_min}px;
+}}
+.nn-card.nn-status-ok {{
+  border-left-color: {ok};
+}}
+.nn-card.nn-status-err {{
+  border-left-color: {danger};
+}}
+.nn-card.nn-status-off {{
+  border-left-color: {muted};
+}}
+.nn-chip {{
+  border-radius: 999px;
+  padding: 1px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background-color: alpha({accent}, 0.12);
+  color: {accent};
+}}
+.nn-connect-dialog {{
+  background-color: {card};
+  color: {text};
 }}
 .nn-card.nn-offline {{
   opacity: 0.6;
@@ -120,12 +147,12 @@ window.nn-window {{
   color: {accent};
 }}
 .nn-badge-off {{
-  background-color: alpha(#d13438, 0.12);
-  color: #d13438;
+  background-color: alpha({danger}, 0.12);
+  color: {danger};
 }}
 .nn-badge-ok {{
-  background-color: alpha(#107c10, 0.12);
-  color: #107c10;
+  background-color: alpha({ok}, 0.14);
+  color: {ok};
 }}
 .nn-overlay {{
   background-color: alpha(#000000, 0.45);
@@ -152,7 +179,7 @@ window.nn-window {{
   padding: 12px;
 }}
 .nn-conflict {{
-  color: #d13438;
+  color: {danger};
   font-weight: 600;
 }}
 .nn-example {{
@@ -191,6 +218,9 @@ window.nn-window {{
         mono = FONT_MONO,
         pad = pad,
         row_min = row_min,
+        danger = danger,
+        ok = ok,
+        radius = radius,
     );
 
     let provider = CssProvider::new();
