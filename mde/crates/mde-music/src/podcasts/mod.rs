@@ -17,6 +17,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+pub mod people;
+pub use people::Guest;
+
 pub const PAGE: usize = 20;
 
 const USER_AGENT: &str = "NeighbourhoodMusic/2026 (MDE; podcast directory)";
@@ -58,6 +61,8 @@ pub struct Episode {
     pub published: Option<String>,
     #[serde(default)]
     pub duration_secs: Option<u64>,
+    #[serde(default)]
+    pub guests: Vec<Guest>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,7 +136,13 @@ impl Episode {
             artwork: episode.cover_url.clone().or(show_art),
             published: episode.published.clone(),
             duration_secs: episode.duration_secs,
+            guests: Vec::new(),
         })
+    }
+
+    /// Plain-text episode notes (HTML stripped).
+    pub fn notes(&self) -> String {
+        strip_html(&self.description)
     }
 
     pub fn to_track(&self, show: &Show) -> Track {
@@ -151,17 +162,14 @@ impl Episode {
         }
     }
 
-    pub fn subtitle(&self) -> String {
+    /// Date and length only (the hero shows the notes separately).
+    pub fn subtitle_meta(&self) -> String {
         let mut parts = Vec::new();
         if let Some(date) = self.published.as_deref().and_then(short_date) {
             parts.push(date);
         }
         if let Some(secs) = self.duration_secs {
             parts.push(format_duration(secs));
-        }
-        let desc = clip(&strip_html(&self.description), 90);
-        if !desc.is_empty() {
-            parts.push(desc);
         }
         parts.join(" · ")
     }
@@ -249,15 +257,18 @@ pub fn episodes_for_feed(show: &Show) -> Result<Vec<Episode>> {
             .map(|s| s.to_string())
             .or_else(|| item.description().map(|s| s.to_string()))
             .unwrap_or_default();
+        let title = item.title().unwrap_or("Episode").trim().to_string();
+        let guests = guests_for(item, &title, &description, &show.author);
         episodes.push(Episode {
             id,
             show_id: show.id.clone(),
-            title: item.title().unwrap_or("Episode").trim().to_string(),
+            title,
             description,
             stream_url: stream,
             artwork,
             published: item.pub_date().map(|s| s.to_string()),
             duration_secs: duration,
+            guests,
         });
         if episodes.len() >= FEED_EPISODE_CAP * 2 {
             // RSS order is usually newest-first; stop early on huge feeds.
@@ -269,18 +280,35 @@ pub fn episodes_for_feed(show: &Show) -> Result<Vec<Episode>> {
     Ok(episodes)
 }
 
+fn guests_for(item: &rss::Item, title: &str, description: &str, author: &str) -> Vec<Guest> {
+    let tagged = people::guests_from_extensions(item);
+    if !tagged.is_empty() {
+        return tagged;
+    }
+    people::guests_from_text(title, &strip_html(description), author)
+}
+
 /// Merge server-downloaded episodes with the live RSS window (prefer server streams).
 pub fn merge_episode_lists(server: Vec<Episode>, feed: Vec<Episode>) -> Vec<Episode> {
-    let mut out = Vec::new();
-    let mut seen = std::collections::HashSet::new();
+    let mut out: Vec<Episode> = Vec::new();
+    let mut seen = std::collections::HashMap::new();
     for ep in server.into_iter().chain(feed) {
-        let key = ep
-            .title
-            .trim()
-            .to_ascii_lowercase();
-        if key.is_empty() || !seen.insert(key) {
+        let key = ep.title.trim().to_ascii_lowercase();
+        if key.is_empty() {
             continue;
         }
+        if let Some(&at) = seen.get(&key) {
+            // Server copies carry no notes or guests; borrow them from the feed copy.
+            let kept: &mut Episode = &mut out[at];
+            if kept.description.trim().is_empty() {
+                kept.description = ep.description;
+            }
+            if kept.guests.is_empty() {
+                kept.guests = ep.guests;
+            }
+            continue;
+        }
+        seen.insert(key, out.len());
         out.push(ep);
     }
     sort_newest(&mut out);

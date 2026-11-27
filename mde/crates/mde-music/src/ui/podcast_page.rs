@@ -1,14 +1,17 @@
 //! Podcast browser: trending directories, saved shows, and this server's shows.
 
 use crate::model::Track;
-use crate::podcasts::{self, Episode, Show};
+use crate::podcasts::people::{self, GuestBio};
+use crate::podcasts::{self, Episode, Guest, Show};
 use crate::ui::shell::{bind_cover, play_track, AppState};
 use gtk4::prelude::*;
 use gtk4::{
     Align, Box as GtkBox, Button, Entry, Label, ListBox, ListBoxRow, Orientation, ScrolledWindow,
 };
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -36,6 +39,27 @@ struct Incoming {
     server_shows: Option<Vec<Show>>,
 }
 
+/// Where a guest's biography lookup stands.
+#[derive(Clone)]
+enum BioState {
+    Pending,
+    Found(GuestBio),
+    Missing,
+}
+
+/// The widgets of one guest card that fill in once a biography arrives.
+#[derive(Clone)]
+struct GuestSlot {
+    name: String,
+    photo: gtk4::Image,
+    has_feed_photo: bool,
+    role: Label,
+    bio: Label,
+    source: Label,
+}
+
+type BioResult = (String, std::result::Result<Option<GuestBio>, String>);
+
 #[derive(Clone)]
 pub(crate) struct PodcastPage {
     state: Rc<AppState>,
@@ -54,6 +78,10 @@ pub(crate) struct PodcastPage {
     generation: Rc<Cell<u64>>,
     chips: Rc<RefCell<Vec<(String, Button)>>>,
     pending: Arc<parking_lot::Mutex<Option<Incoming>>>,
+    bios: Rc<RefCell<HashMap<String, BioState>>>,
+    slots: Rc<RefCell<Vec<GuestSlot>>>,
+    bio_jobs: mpsc::Sender<String>,
+    bio_done: Arc<parking_lot::Mutex<Vec<BioResult>>>,
 }
 
 impl PodcastPage {
@@ -272,29 +300,47 @@ impl PodcastPage {
         while let Some(child) = self.header.first_child() {
             self.header.remove(&child);
         }
+        self.header.add_css_class("nm-hero-stage");
         let art = gtk4::Image::new();
-        art.set_pixel_size(96);
-        art.set_size_request(96, 96);
+        art.add_css_class("nm-hero-art");
+        art.set_pixel_size(168);
+        art.set_size_request(168, 168);
+        art.set_valign(Align::Start);
         art.set_icon_name(Some("multimedia-player-symbolic"));
         bind_cover(&art, show.artwork.as_deref());
-        let text = GtkBox::new(Orientation::Vertical, 4);
+        let text = GtkBox::new(Orientation::Vertical, 6);
         text.set_hexpand(true);
         let title = Label::new(Some(&show.title));
-        title.add_css_class("nm-card-title");
+        title.add_css_class("nm-ep-title");
         title.set_halign(Align::Start);
         title.set_wrap(true);
         title.set_xalign(0.0);
-        let sub = Label::new(Some(&show.subtitle()));
-        sub.add_css_class("nm-muted");
-        sub.set_halign(Align::Start);
-        sub.set_wrap(true);
-        sub.set_lines(3);
-        sub.set_ellipsize(gtk4::pango::EllipsizeMode::End);
-        sub.set_xalign(0.0);
         text.append(&title);
-        text.append(&sub);
+        let by = [show.author.trim(), show.source.trim()]
+            .iter()
+            .filter(|part| !part.is_empty())
+            .copied()
+            .collect::<Vec<_>>()
+            .join(" · ");
+        if !by.is_empty() {
+            let by = Label::new(Some(&by));
+            by.add_css_class("nm-ep-meta");
+            by.set_halign(Align::Start);
+            by.set_xalign(0.0);
+            text.append(&by);
+        }
+        let about = podcasts::strip_html(&show.description);
+        if !about.is_empty() {
+            let desc = Label::new(Some(&clip_text(&about, 520)));
+            desc.add_css_class("nm-ep-desc");
+            desc.set_halign(Align::Start);
+            desc.set_wrap(true);
+            desc.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
+            desc.set_xalign(0.0);
+            text.append(&desc);
+        }
         let actions = GtkBox::new(Orientation::Vertical, 6);
-        actions.set_valign(Align::Center);
+        actions.set_valign(Align::Start);
         let save = save_button(self, show);
         let refresh = Button::with_label("Refresh");
         refresh.add_css_class("nm-chip");
@@ -400,6 +446,7 @@ impl PodcastPage {
     }
 
     fn clear_list(&self) {
+        self.slots.borrow_mut().clear();
         while let Some(row) = self.list.row_at_index(0) {
             self.list.remove(&row);
         }
@@ -431,20 +478,204 @@ impl PodcastPage {
             existing += 1;
         }
         for (offset, episode) in episodes.iter().enumerate() {
-            let row = ListBoxRow::new();
-            row.add_css_class("nm-lib-row");
-            let line = row_line();
-            let art = cover_image(48);
-            let art_url = episode.artwork.clone().or_else(|| show.artwork.clone());
-            bind_cover(&art, art_url.as_deref());
-            let open = open_button(&episode.title, &episode.subtitle());
-            let page = self.clone();
             let index = existing as usize + offset;
-            open.connect_clicked(move |_| page.play_index(index));
-            line.append(&art);
-            line.append(&open);
-            row.set_child(Some(&line));
+            let row = self.episode_hero(show, episode, index);
             self.list.append(&row);
+        }
+    }
+
+    /// One episode, presented as a hero: big art, title, notes, play, and its guests.
+    fn episode_hero(&self, show: &Show, episode: &Episode, index: usize) -> ListBoxRow {
+        let row = ListBoxRow::new();
+        row.add_css_class("nm-lib-row");
+        row.add_css_class("nm-ep-row");
+        row.set_activatable(false);
+
+        let card = GtkBox::new(Orientation::Horizontal, 20);
+        card.add_css_class("nm-ep-hero");
+
+        let art = gtk4::Image::new();
+        art.add_css_class("nm-hero-art");
+        art.set_pixel_size(280);
+        art.set_size_request(280, 280);
+        art.set_valign(Align::Start);
+        art.set_icon_name(Some("multimedia-player-symbolic"));
+        let art_url = episode.artwork.clone().or_else(|| show.artwork.clone());
+        bind_cover(&art, art_url.as_deref());
+
+        let body = GtkBox::new(Orientation::Vertical, 8);
+        body.set_hexpand(true);
+
+        let mut meta = Vec::new();
+        if index == 0 {
+            meta.push("LATEST".to_string());
+        }
+        let subtitle = episode.subtitle_meta();
+        if !subtitle.is_empty() {
+            meta.push(subtitle);
+        }
+        if !meta.is_empty() {
+            let meta = Label::new(Some(&meta.join(" · ")));
+            meta.add_css_class("nm-ep-meta");
+            meta.set_halign(Align::Start);
+            meta.set_xalign(0.0);
+            body.append(&meta);
+        }
+
+        let title = Label::new(Some(&episode.title));
+        title.add_css_class("nm-ep-title");
+        title.set_halign(Align::Start);
+        title.set_wrap(true);
+        title.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
+        title.set_xalign(0.0);
+        body.append(&title);
+
+        let notes = episode.notes();
+        if !notes.is_empty() {
+            const SHORT: usize = 420;
+            let full = clip_text(&notes, 6000);
+            let desc = Label::new(Some(&clip_text(&notes, SHORT)));
+            desc.add_css_class("nm-ep-desc");
+            desc.set_halign(Align::Start);
+            desc.set_wrap(true);
+            desc.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
+            desc.set_xalign(0.0);
+            body.append(&desc);
+            if notes.chars().count() > SHORT {
+                let toggle = Button::with_label("Show full notes");
+                toggle.add_css_class("nm-chip");
+                toggle.set_halign(Align::Start);
+                let short = clip_text(&notes, SHORT);
+                let open = Rc::new(Cell::new(false));
+                toggle.connect_clicked(move |button| {
+                    let now = !open.get();
+                    open.set(now);
+                    desc.set_text(if now { &full } else { &short });
+                    button.set_label(if now { "Show less" } else { "Show full notes" });
+                });
+                body.append(&toggle);
+            }
+        }
+
+        let play = Button::with_label("Play episode");
+        play.add_css_class("nm-chip");
+        play.add_css_class("nm-chip-on");
+        play.set_halign(Align::Start);
+        play.update_property(&[gtk4::accessible::Property::Label(&format!(
+            "Play {}",
+            episode.title
+        ))]);
+        let page = self.clone();
+        play.connect_clicked(move |_| page.play_index(index));
+        body.append(&play);
+
+        if !episode.guests.is_empty() {
+            let heading = Label::new(Some(if episode.guests.len() == 1 {
+                "ABOUT THE GUEST"
+            } else {
+                "ABOUT THE GUESTS"
+            }));
+            heading.add_css_class("nm-ep-section");
+            heading.set_halign(Align::Start);
+            body.append(&heading);
+            for guest in &episode.guests {
+                body.append(&self.guest_card(guest));
+            }
+        }
+
+        card.append(&art);
+        card.append(&body);
+        row.set_child(Some(&card));
+        row
+    }
+
+    fn guest_card(&self, guest: &Guest) -> GtkBox {
+        let card = GtkBox::new(Orientation::Horizontal, 14);
+        card.add_css_class("nm-guest-card");
+
+        let photo = gtk4::Image::new();
+        photo.add_css_class("nm-guest-photo");
+        photo.set_pixel_size(72);
+        photo.set_size_request(72, 72);
+        photo.set_valign(Align::Start);
+        photo.set_icon_name(Some("avatar-default-symbolic"));
+        let has_feed_photo = guest.img.is_some();
+        bind_cover(&photo, guest.img.as_deref());
+
+        let col = GtkBox::new(Orientation::Vertical, 3);
+        col.set_hexpand(true);
+        let name = Label::new(Some(&guest.name));
+        name.add_css_class("nm-guest-name");
+        name.set_halign(Align::Start);
+        name.set_xalign(0.0);
+        name.set_wrap(true);
+        let role = Label::new(Some("Guest"));
+        role.add_css_class("nm-ep-meta");
+        role.set_halign(Align::Start);
+        role.set_xalign(0.0);
+        let bio = Label::new(Some("Looking up biography…"));
+        bio.add_css_class("nm-guest-bio");
+        bio.set_halign(Align::Start);
+        bio.set_wrap(true);
+        bio.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
+        bio.set_xalign(0.0);
+        let source = Label::new(None);
+        source.add_css_class("nm-credit");
+        source.set_halign(Align::Start);
+        source.set_xalign(0.0);
+        source.set_wrap(true);
+        source.set_visible(false);
+        col.append(&name);
+        col.append(&role);
+        col.append(&bio);
+        col.append(&source);
+        card.append(&photo);
+        card.append(&col);
+
+        let slot = GuestSlot {
+            name: guest.name.clone(),
+            photo,
+            has_feed_photo,
+            role,
+            bio,
+            source,
+        };
+        let known = self.bios.borrow().get(&bio_key(&guest.name)).cloned();
+        match known {
+            Some(BioState::Pending) => self.slots.borrow_mut().push(slot),
+            Some(state) => paint_guest(&slot, &state),
+            None => {
+                self.bios
+                    .borrow_mut()
+                    .insert(bio_key(&guest.name), BioState::Pending);
+                self.slots.borrow_mut().push(slot);
+                let _ = self.bio_jobs.send(guest.name.clone());
+            }
+        }
+        card
+    }
+
+    fn apply_bios(&self) {
+        let done: Vec<BioResult> = std::mem::take(&mut *self.bio_done.lock());
+        for (name, result) in done {
+            let key = bio_key(&name);
+            let state = match result {
+                Ok(Some(bio)) => BioState::Found(bio),
+                Ok(None) => BioState::Missing,
+                Err(err) => {
+                    tracing::warn!(guest = %name, error = %err, "guest biography lookup failed");
+                    // Not cached: forget it so the next view retries.
+                    self.bios.borrow_mut().remove(&key);
+                    for slot in self.slots.borrow().iter().filter(|s| bio_key(&s.name) == key) {
+                        slot.bio.set_text("Biography unavailable right now. Check the connection and Refresh.");
+                    }
+                    continue;
+                }
+            };
+            for slot in self.slots.borrow().iter().filter(|s| bio_key(&s.name) == key) {
+                paint_guest(slot, &state);
+            }
+            self.bios.borrow_mut().insert(key, state);
         }
     }
 
@@ -686,6 +917,48 @@ fn describe(mode: &Browse, n: usize) -> String {
     }
 }
 
+fn bio_key(name: &str) -> String {
+    name.trim().to_lowercase()
+}
+
+fn clip_text(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let cut: String = text.chars().take(max).collect();
+    let end = cut.rfind(". ").map(|i| i + 1).or_else(|| cut.rfind(' ')).unwrap_or(cut.len());
+    format!("{}…", cut[..end].trim_end())
+}
+
+fn paint_guest(slot: &GuestSlot, state: &BioState) {
+    match state {
+        BioState::Found(bio) => {
+            if !bio.descriptor.is_empty() {
+                let mut d = bio.descriptor.clone();
+                if let Some(first) = d.get(..1) {
+                    d = format!("{}{}", first.to_uppercase(), &d[1..]);
+                }
+                slot.role.set_text(&format!("Guest · {d}"));
+            }
+            slot.bio.set_text(&bio.bio);
+            slot.source.set_markup(&format!(
+                "<a href=\"{}\">Wikipedia — {}</a>",
+                glib::markup_escape_text(&bio.url),
+                glib::markup_escape_text(&bio.article)
+            ));
+            slot.source.set_visible(true);
+            if !slot.has_feed_photo {
+                bind_cover(&slot.photo, bio.photo.as_deref());
+            }
+        }
+        BioState::Missing => slot.bio.set_text(&format!(
+            "No public biography found for {}.",
+            slot.name
+        )),
+        BioState::Pending => {}
+    }
+}
+
 fn plural(n: usize) -> &'static str {
     if n == 1 {
         ""
@@ -867,6 +1140,19 @@ pub(crate) fn build_podcast_page(state: Rc<AppState>) -> PodcastPage {
     root.append(&list_scroll);
     root.append(&more);
 
+    let (bio_jobs, bio_rx) = mpsc::channel::<String>();
+    let bio_done: Arc<parking_lot::Mutex<Vec<BioResult>>> =
+        Arc::new(parking_lot::Mutex::new(Vec::new()));
+    {
+        let done = bio_done.clone();
+        std::thread::spawn(move || {
+            while let Ok(name) = bio_rx.recv() {
+                let result = people::lookup_bio(&name).map_err(|err| format!("{err:#}"));
+                done.lock().push((name, result));
+            }
+        });
+    }
+
     let page = PodcastPage {
         state,
         root,
@@ -884,6 +1170,10 @@ pub(crate) fn build_podcast_page(state: Rc<AppState>) -> PodcastPage {
         generation: Rc::new(Cell::new(0)),
         chips: Rc::new(RefCell::new(Vec::new())),
         pending: Arc::new(parking_lot::Mutex::new(None)),
+        bios: Rc::new(RefCell::new(HashMap::new())),
+        slots: Rc::new(RefCell::new(Vec::new())),
+        bio_jobs,
+        bio_done,
     };
 
     let ignore = Rc::new(Cell::new(false));
@@ -1010,6 +1300,7 @@ pub(crate) fn build_podcast_page(state: Rc<AppState>) -> PodcastPage {
                     page.apply_incoming(incoming);
                 }
             }
+            page.apply_bios();
             page.mark_playing();
             glib::ControlFlow::Continue
         });

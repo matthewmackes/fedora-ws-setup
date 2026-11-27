@@ -793,3 +793,18 @@ window.nm-window button.nm-card:hover {
 .nm-audiophile togglebutton.nm-chip:checked { background-color: #1ed760; color: #04120a; }
 .nm-audiophile entry.error { border-color: #e5484d; }
 .nm-audiophile switch:checked { background-color: #1ed760; }
+
+/* —— Podcast episode heroes + guest bios —— */
+.nm-ep-hero { padding: 18px 18px 16px 18px; }
+.nm-ep-title { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; color: #ffffff; }
+.nm-ep-meta { font-size: 12px; font-weight: 700; letter-spacing: 0.6px; color: #8eb8e6; }
+.nm-ep-desc { font-size: 14px; line-height: 1.5; color: #c9d1da; }
+.nm-ep-section { font-size: 11px; font-weight: 800; letter-spacing: 1.4px; color: #8b939c; margin-top: 10px; }
+.nm-guest-card {
+  padding: 12px 14px; border-radius: 14px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+.nm-guest-photo { border-radius: 999px; background-color: rgba(255, 255, 255, 0.08); }
+.nm-guest-name { font-size: 16px; font-weight: 800; color: #ffffff; }
+.nm-guest-bio { font-size: 13px; line-height: 1.5; color: #dde3ea; }

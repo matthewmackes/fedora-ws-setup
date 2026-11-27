@@ -976,7 +976,28 @@ fn build_main(state: Rc<AppState>, root_stack: Stack) -> GtkBox {
         let keys = gtk4::EventControllerKey::new();
         keys.set_propagation_phase(gtk4::PropagationPhase::Capture);
         let off = std::cell::Cell::new(false);
-        keys.connect_key_pressed(move |_, key, _, mods| {
+        let space_state = state.clone();
+        keys.connect_key_pressed(move |ctrl, key, _, mods| {
+            // Spacebar is the universal Play/Pause unless a text field has focus.
+            // Capture phase, so a focused button does not swallow it as "click".
+            if key == gtk4::gdk::Key::space
+                && !mods.intersects(
+                    gtk4::gdk::ModifierType::CONTROL_MASK
+                        | gtk4::gdk::ModifierType::ALT_MASK
+                        | gtk4::gdk::ModifierType::SUPER_MASK,
+                )
+            {
+                let typing = ctrl
+                    .widget()
+                    .and_then(|w| w.root())
+                    .and_then(|r| r.focus())
+                    .is_some_and(|w| is_text_input(&w));
+                if typing {
+                    return glib::Propagation::Proceed;
+                }
+                let _ = space_state.player.toggle();
+                return glib::Propagation::Stop;
+            }
             let want = gtk4::gdk::ModifierType::CONTROL_MASK | gtk4::gdk::ModifierType::SHIFT_MASK;
             if (key == gtk4::gdk::Key::M || key == gtk4::gdk::Key::m) && mods.contains(want) {
                 off.set(!off.get());
@@ -6076,6 +6097,18 @@ fn maybe_extend_queue_continuum(state: &AppState) {
     });
 }
 
+/// True when `widget` (or an ancestor) is somewhere the user types text.
+fn is_text_input(widget: &gtk4::Widget) -> bool {
+    let mut cur = Some(widget.clone());
+    while let Some(w) = cur {
+        if w.is::<gtk4::Editable>() || w.is::<gtk4::TextView>() {
+            return true;
+        }
+        cur = w.parent();
+    }
+    false
+}
+
 fn install_shortcuts(state: Rc<AppState>, content: Stack) {
     let controller = gtk4::EventControllerKey::new();
     let st = state.clone();
@@ -6083,10 +6116,6 @@ fn install_shortcuts(state: Rc<AppState>, content: Stack) {
     controller.connect_key_pressed(move |_, key, _code, _mods| {
         use gtk4::gdk::Key;
         match key {
-            Key::space => {
-                let _ = st.player.toggle();
-                glib::Propagation::Stop
-            }
             Key::n | Key::N => {
                 if let Some(t) = st.player.advance() {
                     play_track(&st, t);
