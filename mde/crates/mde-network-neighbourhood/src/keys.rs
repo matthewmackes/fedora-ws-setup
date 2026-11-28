@@ -89,6 +89,35 @@ fn run(cmd: &mut Command, what: &str) -> Result<()> {
     }
 }
 
+/// Run a shell command on the host, authenticating with the saved password.
+fn remote(place: &Place, password: &str, cmd: &str) -> Result<()> {
+    let mut args = crate::probe::ssh_args(place);
+    // ssh_args ends with the "true" test command; swap in ours.
+    args.pop();
+    args.push(cmd.to_string());
+    run(
+        Command::new("sshpass")
+            .env("SSHPASS", password)
+            .arg("-e")
+            .arg("ssh")
+            .args(args),
+        "remote command",
+    )
+}
+
+/// sshd's StrictModes ignores `authorized_keys` (and refuses key login) when the
+/// home directory, `~/.ssh` or the file is group/world-writable, which is common.
+/// Remove only the write bits; nothing else about the files changes.
+pub const FIX_PERMS_CMD: &str = "chmod go-w ~ ~/.ssh ~/.ssh/authorized_keys";
+
+/// Command that deletes this place's public key (identified by its comment) from the host.
+pub fn remove_remote_key_cmd(place: &Place) -> String {
+    format!(
+        "sed -i '/network-neighbourhood:{}/d' ~/.ssh/authorized_keys",
+        place.id
+    )
+}
+
 fn remove_key(place: &Place) {
     let k = key_path(place);
     let _ = std::fs::remove_file(&k);
@@ -125,14 +154,23 @@ pub fn setup_ssh_key(place: &Place) -> Result<()> {
         "ssh-copy-id",
     );
     if let Err(e) = installed {
+        // The key may have been appended before the failure: take it back off the host.
+        let _ = remote(place, &password, &remove_remote_key_cmd(place));
         remove_key(place);
         return Err(e);
     }
 
+    tracing::info!(place = %place.id, "making sure sshd will accept the key (StrictModes)");
+    if let Err(e) = remote(place, &password, FIX_PERMS_CMD) {
+        tracing::warn!(place = %place.id, "could not tighten permissions on the host: {e}");
+    }
+
     tracing::info!(place = %place.id, "verifying passwordless login");
     if let Err(e) = run(Command::new("ssh").args(verify_args(place)), "key login check") {
+        tracing::warn!(place = %place.id, "key login failed; removing the key from the host and rolling back");
+        let _ = remote(place, &password, &remove_remote_key_cmd(place));
         remove_key(place);
-        bail!("the host accepted the key but passwordless login still failed (rolled back): {e}");
+        bail!("the host accepted the key but passwordless login still failed (rolled back, key removed from the host): {e}");
     }
     tracing::info!(place = %place.id, "ssh key setup complete");
     Ok(())
@@ -169,6 +207,19 @@ mod tests {
         let p = place();
         assert!(key_path(&p).starts_with(CREDS_DIR));
         assert!(key_path(&p).to_string_lossy().ends_with(".key"));
+    }
+
+    #[test]
+    fn host_permission_fix_only_removes_write_bits() {
+        assert_eq!(FIX_PERMS_CMD, "chmod go-w ~ ~/.ssh ~/.ssh/authorized_keys");
+    }
+
+    #[test]
+    fn rollback_targets_only_this_places_key() {
+        let p = place();
+        let cmd = remove_remote_key_cmd(&p);
+        assert!(cmd.contains(&format!("network-neighbourhood:{}", p.id)));
+        assert!(cmd.starts_with("sed -i"));
     }
 
     #[test]

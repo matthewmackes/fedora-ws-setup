@@ -39,7 +39,7 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 - [x] Installed the new daemon and GUI (via pkexec; old binaries backed up as `*.bak-20261127`) and verified in the live daemon: MountPlace now replies (was a 95 s hang), logs every step to the journal, records history, and classifies failures.
 - [x] Found and fixed on the live system: sshfs registers the FUSE mount before login is confirmed, so a wrong password briefly looked "Connected". The mount must now stay up and be readable before success is reported.
 - [x] Positive SSH password mount verified live: after updating the stale saved password, `mm@172.20.0.2` mounts via the installed daemon (real `fuse.sshfs` mount, folder listing readable) in 2.7 s.
-- [ ] Live key setup (generate, install on host, verify) not run: it edits `authorized_keys` on the remote host, so it needs explicit go-ahead.
+- [x] Live key setup verified on `mm@172.20.0.2`: generate, install, verify, then remount through systemd with the key only (no sshpass). Found and fixed on the real host: its `authorized_keys` was group-writable, so sshd's StrictModes ignored the key. Setup now runs `chmod go-w ~ ~/.ssh ~/.ssh/authorized_keys`, and a failed attempt removes its own public key from the host (it previously left it behind). Debug keys added during testing were removed from the host and the file diffed against a backup.
 
 ### M2: Connecting dialog and error UX
 - [x] Modal dialog: step checklist, progress bar, collapsed Details log, Cancel (`ui/connect_dialog.rs`).
@@ -73,4 +73,4 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 - [x] Screenshot-reviewed. Found and fixed invisible accent buttons (theme gradient overriding background) and a clipped protocol chip.
 
 ## Verification status
-41 unit tests pass (+4 live checks run with `--ignored`) (`cargo test -p mde-network-neighbourhood`). Two items remain, both needing credentials rather than code: the SSH password for `mm@172.20.0.2` and a Jellyfin login (`sudo bash mde/data/network-neighbourhood/install.sh`).
+43 unit tests pass (+4 live checks run with `--ignored`) (`cargo test -p mde-network-neighbourhood`). Two items remain, both needing credentials rather than code: the SSH password for `mm@172.20.0.2` and a Jellyfin login (`sudo bash mde/data/network-neighbourhood/install.sh`).
