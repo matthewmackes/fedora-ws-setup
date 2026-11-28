@@ -181,8 +181,11 @@ fn build_ui(app: &Application) {
     let places_scroll = ScrolledWindow::builder()
         .vexpand(true)
         .hexpand(true)
+        .hscrollbar_policy(gtk4::PolicyType::Never)
         .build();
     let places_list = GtkBox::new(Orientation::Vertical, 4);
+    places_list.set_hexpand(true);
+    places_list.set_halign(Align::Fill);
     places_list.set_margin_top(8);
     places_list.set_margin_bottom(16);
     places_scroll.set_child(Some(&places_list));
@@ -1180,6 +1183,7 @@ fn build_place_card(
     // Use a box (not a Button) so action buttons inside remain clickable.
     let card = GtkBox::new(Orientation::Vertical, 8);
     card.add_css_class("nn-card");
+    card.set_halign(Align::Fill);
     if selected {
         card.add_css_class("nn-active");
     }
@@ -1203,6 +1207,8 @@ fn build_place_card(
         .halign(Align::Start)
         .css_classes(["nn-path"])
         .selectable(true)
+        .ellipsize(gtk4::pango::EllipsizeMode::Middle)
+        .max_width_chars(48)
         .build());
     let remote = if place.url.is_empty() {
         format!(

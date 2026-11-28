@@ -75,16 +75,23 @@ window.nn-window {{
   padding: 6px 12px;
   margin: 0 2px;
 }}
-.nn-accent {{
+.nn-accent, button.nn-accent {{
   background-color: {accent};
-  color: white;
+  background-image: none;
+  color: #ffffff;
+  text-shadow: none;
   border: none;
   border-radius: 4px;
   padding: 8px 16px;
   font-weight: 600;
 }}
-.nn-accent:hover {{
-  opacity: 0.92;
+.nn-accent:hover, button.nn-accent:hover {{
+  background-color: {accent};
+  background-image: none;
+  opacity: 0.9;
+}}
+button.nn-accent:disabled {{
+  opacity: 0.5;
 }}
 .nn-card {{
   background-color: {card};
