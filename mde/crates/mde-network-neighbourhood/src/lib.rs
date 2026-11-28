@@ -9,6 +9,7 @@ pub mod keys;
 pub mod media;
 pub mod mount;
 pub mod place;
+pub mod probe;
 pub mod status;
 pub mod ui;
 

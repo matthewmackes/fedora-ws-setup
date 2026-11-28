@@ -51,6 +51,10 @@ pub fn place_reachable(place: &Place) -> bool {
     .is_ok()
 }
 
+pub fn resolve_ip_pub(host: &str) -> Option<std::net::IpAddr> {
+    resolve_ip(host)
+}
+
 fn resolve_ip(host: &str) -> Option<std::net::IpAddr> {
     use std::net::ToSocketAddrs;
     format!("{host}:0")

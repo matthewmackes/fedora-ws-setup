@@ -42,7 +42,7 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 - [x] Modal dialog: step checklist, progress bar, collapsed Details log, Cancel (`ui/connect_dialog.rs`).
 - [x] Success closes the dialog and opens the folder in Files. Failure keeps it open with cause, fix, Retry / Edit place / Copy log.
 - [x] Auto-fixes: install missing package (pkexec dnf), trust new host key (pkexec ssh-keygen -R), re-enter password.
-- [~] Polkit session caching: relies on the existing `auth_admin_keep` action; not re-verified.
+- [x] Polkit session caching: `org.mde.NetworkNeighbourhood1.manage` is installed with `auth_admin_keep` (confirmed with `pkaction`). Not exercised through a real prompt.
 
 ### M3: Key setup wizard
 - [x] After a successful password connect to an SSH place, prompt "Set up passwordless access?" (not repeated after "Not now" in a session).
@@ -50,7 +50,7 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 
 ### M4: Wizard, status and history
 - [x] Add Place now connects through the Connecting dialog after save (was a silent background thread printing to stderr). Default policy is Automount (per-place choice kept).
-- [~] "Test connection" is the Save & connect step, not a separate pre-save probe.
+- [x] Real pre-save **Test connection** button (`probe.rs`): resolve, reach, authenticate (SSH password login, SMB share list), no root, results shown step by step with the diagnosed cause and fix. Primary button is now "Save & connect".
 - [x] Daemon probes reachability every 30 s (`seen.json`); card shows Offline badge, dimmed, "last seen"; UI notifies when a place returns.
 - [x] History (`history.jsonl`, 200 cap), D-Bus `GetHistory`; "Activity" window in the command bar; existing inline last-connection status kept on each card.
 - [x] `~/Network/<name>` symlinks created after a successful connect.
@@ -58,11 +58,12 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 ### M5: Media FUSE
 - [x] Subsonic and Jellyfin backends return flat entries; `media/views.rs` builds By Artist / By Album / By Genre / Recently Added (video: All / By Genre / Recently Added). 12 unit tests.
 - [x] Read-only. Helper failures and timeouts are now reported instead of always "succeeding".
-- [ ] Not exercised against a real Jellyfin/Airsonic server.
+- [x] Subsonic client exercised over real HTTP against a local mock server (songs → views; wrong password surfaces the server message and classifies as Auth).
+- [ ] Not exercised against a real Jellyfin/Airsonic server, nor a live FUSE mount (needs root for `allow_other`).
 
 ### M6: Redesign
 - [x] Colours from the MDE `Palette`; 12 px card radius; status stripe, protocol chip, last-seen line.
-- [ ] Not visually reviewed (launches clean; no screenshot taken).
+- [x] Screenshot-reviewed. Found and fixed invisible accent buttons (theme gradient overriding background) and a clipped protocol chip.
 
 ## Verification status
-30 unit tests pass (`cargo test -p mde-network-neighbourhood`). Nothing has run against the installed system daemon: install needs root (`sudo bash mde/data/network-neighbourhood/install.sh`).
+37 unit tests pass (`cargo test -p mde-network-neighbourhood`). The one remaining open item is the live end-to-end SSH mount (M1) plus real Jellyfin/Airsonic: they need the new daemon installed, which needs root (`sudo bash mde/data/network-neighbourhood/install.sh`).

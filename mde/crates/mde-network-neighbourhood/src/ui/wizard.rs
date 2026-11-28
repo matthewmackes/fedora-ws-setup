@@ -319,9 +319,11 @@ fn run_add_dialog(window: &ApplicationWindow, initial: Option<Place>, refresh: R
     let footer = GtkBox::new(Orientation::Horizontal, 8);
     footer.set_halign(Align::End);
     let cancel = Button::with_label("Cancel");
-    let finish = Button::with_label("Finish");
+    let finish = Button::with_label("Save & connect");
+    let test_btn = Button::with_label("Test connection");
     finish.add_css_class("nn-accent");
     footer.append(&cancel);
+    footer.append(&test_btn);
     footer.append(&finish);
     content.append(&footer);
     dlg.set_child(Some(&content));
@@ -507,6 +509,66 @@ fn run_add_dialog(window: &ApplicationWindow, initial: Option<Place>, refresh: R
     cancel.connect_clicked({
         let dlg = dlg.clone();
         move |_| dlg.close()
+    });
+
+    // Test connection: resolve, reach and authenticate (no mount, no root) and show each step.
+    test_btn.connect_clicked({
+        let dlg = dlg.clone();
+        let proto = proto.clone();
+        let proto_ids = proto_ids.clone();
+        let host = host.clone();
+        let path = path.clone();
+        let user = user.clone();
+        let pass = pass.clone();
+        let uri_entry = uri_entry.clone();
+        move |btn| {
+            let mut place = {
+                let id = selected_id(&proto, &proto_ids);
+                let protocol = Protocol::parse(&id).unwrap_or(Protocol::Smb);
+                let mut p = Place::new("test", protocol, host.text().as_str());
+                p.path = path.text().to_string();
+                p
+            };
+            if place.host.is_empty() {
+                if let Some(parsed) = dbus::parse_network_uri(&uri_entry.text()) {
+                    place = parsed;
+                }
+            }
+            place.username = user.text().to_string();
+            let password = pass.text().to_string();
+            btn.set_sensitive(false);
+            btn.set_label("Testing…");
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = tx.send(crate::probe::run(&place, &password));
+            });
+            let btn = btn.clone();
+            let dlg = dlg.clone();
+            glib::timeout_add_local(std::time::Duration::from_millis(150), move || match rx.try_recv() {
+                Ok(steps) => {
+                    btn.set_sensitive(true);
+                    btn.set_label("Test connection");
+                    let ok = steps.iter().all(|s| s.ok);
+                    let mut detail: String = steps
+                        .iter()
+                        .map(|s| format!("{} {} — {}", if s.ok { "✓" } else { "✗" }, s.label, s.detail))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    if let Some(bad) = steps.iter().find(|s| !s.ok) {
+                        let d = crate::diagnose::classify(&bad.detail);
+                        detail.push_str(&format!("\n\n{}\n{}", d.cause, d.fix));
+                    }
+                    alert(
+                        &dlg,
+                        if ok { "Connection test passed" } else { "Connection test failed" },
+                        &detail,
+                    );
+                    glib::ControlFlow::Break
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => glib::ControlFlow::Continue,
+                Err(_) => glib::ControlFlow::Break,
+            });
+        }
     });
 
     finish.connect_clicked({

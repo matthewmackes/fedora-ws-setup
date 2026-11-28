@@ -161,4 +161,64 @@ mod tests {
         let v = serde_json::json!({"subsonic-response":{"status":"failed","error":{"message":"Wrong username or password"}}});
         assert!(check_status(&v).unwrap_err().to_string().contains("Wrong username"));
     }
+
+    /// Serve canned Subsonic JSON on a local port and run the real client against it.
+    fn mock_server(password_ok: bool) -> u16 {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut st) = stream else { break };
+                let mut buf = [0u8; 4096];
+                let n = st.read(&mut buf).unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]).to_string();
+                let body = if req.starts_with("GET /rest/ping.view") {
+                    if password_ok {
+                        r#"{"subsonic-response":{"status":"ok"}}"#.to_string()
+                    } else {
+                        r#"{"subsonic-response":{"status":"failed","error":{"code":40,"message":"Wrong username or password"}}}"#.to_string()
+                    }
+                } else if req.starts_with("GET /rest/search3.view") {
+                    r#"{"subsonic-response":{"status":"ok","searchResult3":{"song":[
+                        {"id":"1","title":"Smooth Criminal","artist":"Alien Ant Farm","album":"ANThology","genre":"Rock","track":1,"suffix":"mp3","size":100,"created":"2024-01-02T03:04:05.000Z"},
+                        {"id":"2","title":"Movies","artist":"Alien Ant Farm","album":"ANThology","genre":"Rock","track":2,"suffix":"mp3","size":200,"created":"2024-01-02T03:04:05.000Z"}]}}}"#.to_string()
+                } else {
+                    "{}".to_string()
+                };
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = st.write_all(resp.as_bytes());
+            }
+        });
+        port
+    }
+
+    #[test]
+    fn lists_songs_over_http_and_builds_views() {
+        let port = mock_server(true);
+        let mut p = Place::new("m", Protocol::Audio, "127.0.0.1");
+        p.port = Some(port);
+        p.username = "mm".into();
+        let entries = list_entries(&p, "pw").expect("list");
+        assert_eq!(entries.len(), 2);
+        assert!(entries[0].url.contains("stream.view"));
+        let views = crate::media::views::audio_views(&entries);
+        let artist = &views[0].dirs[0];
+        assert_eq!(artist.name, "Alien Ant Farm");
+        assert_eq!(artist.dirs[0].files[0].name, "01 - Smooth Criminal.mp3");
+    }
+
+    #[test]
+    fn wrong_password_surfaces_server_message() {
+        let port = mock_server(false);
+        let mut p = Place::new("m", Protocol::Audio, "127.0.0.1");
+        p.port = Some(port);
+        let err = list_entries(&p, "bad").unwrap_err().to_string();
+        assert!(err.contains("Wrong username or password"), "{err}");
+        assert_eq!(crate::diagnose::classify(&err).kind, crate::diagnose::ErrorKind::Auth);
+    }
 }
