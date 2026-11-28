@@ -38,7 +38,8 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 - [x] Journal logging of steps, failures and the redacted sshfs command line.
 - [x] Installed the new daemon and GUI (via pkexec; old binaries backed up as `*.bak-20261127`) and verified in the live daemon: MountPlace now replies (was a 95 s hang), logs every step to the journal, records history, and classifies failures.
 - [x] Found and fixed on the live system: sshfs registers the FUSE mount before login is confirmed, so a wrong password briefly looked "Connected". The mount must now stay up and be readable before success is reported.
-- [ ] Positive SSH password mount: `mm@172.20.0.2` is rejected with `Permission denied`, so the saved password is wrong. Needs the right password (Edit credentials), then retry.
+- [x] Positive SSH password mount verified live: after updating the stale saved password, `mm@172.20.0.2` mounts via the installed daemon (real `fuse.sshfs` mount, folder listing readable) in 2.7 s.
+- [ ] Live key setup (generate, install on host, verify) not run: it edits `authorized_keys` on the remote host, so it needs explicit go-ahead.
 
 ### M2: Connecting dialog and error UX
 - [x] Modal dialog: step checklist, progress bar, collapsed Details log, Cancel (`ui/connect_dialog.rs`).
@@ -64,7 +65,7 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 - [x] Live against the real Airsonic at 172.20.0.2 (admin login): 2,793 songs listed, 97 artists / 211 albums / 127 genres, four views populated, live FUSE mount through the installed daemon, real 24-bit 96 kHz FLAC bytes read through it. Test place removed afterwards.
 - [x] Fixed: Airsonic 10 rejects API version 1.16.1 ("Server must upgrade"); the client now sends 1.15.0.
 - [x] Jellyfin: added username/password login (`/Users/AuthenticateByName`), API key still works as a fallback. Live: server 10.10.5 reachable and rejects a bad login cleanly.
-- [ ] Jellyfin library listing/mount not run with real credentials (none provided).
+- [ ] Jellyfin library listing/mount: server rejects every login tried (admin/root, two passwords) with HTTP 401, confirmed with curl on both auth headers. Needs the correct Jellyfin username/password or an API key.
 - [x] Fixed on the live system: an autofs placeholder counted as "mounted"; helper-driven places (media, password SSH) no longer get systemd units; UpsertPlace with an empty id no longer discards the caller's fields. Systemd unit names now match `systemd-escape -p` (dotted hosts were rejected).
 
 ### M6: Redesign
