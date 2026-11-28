@@ -317,7 +317,40 @@ pub fn enable_place(place: &Place) -> Result<()> {
     Ok(())
 }
 
+/// A handle on the mount point's directory taken *before* mounting.
+///
+/// File managers (Thunar) watch the directory with inotify. If they viewed it while
+/// nothing was mounted, they keep showing that empty listing after a mount covers it,
+/// because the mount generates no event for the covered directory. Touching the old
+/// directory through this handle once the mount is up makes them re-read the path.
+pub struct StaleViewNudge(Option<fs::File>);
+
+impl StaleViewNudge {
+    pub fn arm(mount_point: &str) -> Self {
+        let _ = fs::create_dir_all(mount_point);
+        Self(fs::File::open(mount_point).ok())
+    }
+
+    /// Call after the mount succeeded.
+    pub fn fire(self) {
+        if let Some(dir) = self.0 {
+            if let Err(e) = dir.set_modified(std::time::SystemTime::now()) {
+                tracing::debug!("could not nudge file managers: {e}");
+            }
+        }
+    }
+}
+
 pub fn mount_now(place: &Place) -> Result<()> {
+    let nudge = StaleViewNudge::arm(&place.mount_point());
+    let result = mount_now_inner(place);
+    if result.is_ok() {
+        nudge.fire();
+    }
+    result
+}
+
+fn mount_now_inner(place: &Place) -> Result<()> {
     match place.protocol {
         Protocol::Video | Protocol::Audio => mount_media_fuse(place),
         Protocol::Ssh if !PathBuf::from(CREDS_DIR).join(format!("{}.key", place.id)).exists() => {
@@ -1003,6 +1036,20 @@ mod tests {
         assert_eq!(unescape_mount_field("a\\011b\\134c"), "a\tb\\c");
         assert_eq!(unescape_mount_field("plain"), "plain");
         assert_eq!(unescape_mount_field("trailing\\04"), "trailing\\04");
+    }
+
+    #[test]
+    fn nudge_touches_the_original_directory_after_a_mount_would_cover_it() {
+        let d = tempfile::tempdir().unwrap();
+        let mp = d.path().join("a b (Video)");
+        let before = std::time::SystemTime::UNIX_EPOCH;
+        let n = StaleViewNudge::arm(mp.to_str().unwrap());
+        assert!(mp.is_dir(), "arming creates the mount point");
+        // Pretend the directory has an old timestamp, then fire.
+        fs::File::open(&mp).unwrap().set_modified(before).unwrap();
+        n.fire();
+        let after = fs::metadata(&mp).unwrap().modified().unwrap();
+        assert!(after > before, "fire() updates the directory's timestamp");
     }
 
     #[test]

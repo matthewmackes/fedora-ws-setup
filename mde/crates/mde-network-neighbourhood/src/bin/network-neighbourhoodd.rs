@@ -23,6 +23,11 @@ async fn main() -> Result<()> {
             let mp = args.next().context("mountpoint")?;
             return media::mount_blocking(&id, Path::new(&mp));
         }
+        if arg == "--mediafs-demo" {
+            let mp = args.next().context("mountpoint")?;
+            let variant = args.next().unwrap_or_default();
+            return media::mount_demo(Path::new(&mp), &variant);
+        }
         if arg == "--sync-units" {
             ensure_config_dirs()?;
             ensure_mount_root()?;

@@ -99,3 +99,10 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 - [x] Read-only. No token or password appears in any attribute (tested, and checked across 80 live files).
 - [x] Verified live with `getfattr -d -m -`, `ls -l` and `stat` on Airsonic and Jellyfin (22 attributes per song, 40+ per movie). 60 unit tests pass.
 - Not included: cover art / posters as image files (possible follow-up).
+
+## Fix: Video (and any) place showed "Empty" in Thunar after connecting
+- [x] Symptom: after Connect, opening the place in Thunar showed "0 items" although `ls`, `gio list` and the same folder via a symlink all listed it. Repeated after every daemon restart.
+- [x] Cause (reproduced, then verified): the long-running `Thunar --daemon` had already shown the mount point as an empty directory while nothing was mounted. A mount that later covers that directory sends it no inotify event, so Thunar keeps the stale empty listing. A path Thunar has never viewed shows fine.
+- [x] Fix: the daemon takes a handle on the mount-point directory before mounting and touches the original directory after the mount succeeds (`StaleViewNudge`), which makes file managers re-read it. Verified on the real Video place: Thunar open on the unmounted folder (empty) fills in by itself on Connect. Unit test added.
+- [x] Also (hardening found along the way): folder timestamps are stable (mount time) instead of "now" on every lookup, real link counts and a normal `statfs`, and the media mount registers as `fuse.neighbourhood-mediafs`. These did not change the symptom.
+- [x] Dev aid: `network-neighbourhoodd --mediafs-demo <dir> [options]` mounts a synthetic library without root or network, for testing file-manager behaviour.

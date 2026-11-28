@@ -43,6 +43,17 @@ struct MediaFs {
     jf: Option<jellyfin::Conn>,
     /// Cast/crew already fetched, by inode.
     lazy_cache: HashMap<u64, meta::Meta>,
+    quirks: Quirks,
+    /// When this mount was built; the stable date for folders and undated files.
+    mounted_at: u64,
+}
+
+/// Switches used only by the `--mediafs-demo` test mount to bisect file-manager problems.
+#[derive(Default, Clone)]
+struct Quirks {
+    no_url: bool,
+    /// Old behaviour (link count 1, library-default statfs), to compare against.
+    legacy: bool,
 }
 
 impl MediaFs {
@@ -61,7 +72,17 @@ impl MediaFs {
             }
             _ => bail!("not a media place"),
         };
+        Ok(Self::from_views(place, password, top, jf, Quirks::default()))
+    }
 
+    /// Build the inode tree from already-arranged views (no network).
+    fn from_views(
+        place: Place,
+        password: String,
+        top: Vec<views::ViewDir>,
+        jf: Option<jellyfin::Conn>,
+        quirks: Quirks,
+    ) -> Self {
         let mut fs = Self {
             place,
             auth_token: password,
@@ -69,17 +90,21 @@ impl MediaFs {
             next_ino: 2,
             jf,
             lazy_cache: HashMap::new(),
+            quirks,
+            mounted_at: SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
         };
         let mut root_children = Vec::new();
         // Virtual "Open in browser" marker file
-        let open_ino = fs.alloc(Node::File {
-            name: "Open in Browser.url".into(),
-            url: fs.place_url(),
-            size: 64,
-            mtime: 0,
-            meta: Arc::default(),
-        });
-        root_children.push(open_ino);
+        if !fs.quirks.no_url {
+            let open_ino = fs.alloc(Node::File {
+                name: "Open in Browser.url".into(),
+                url: fs.place_url(),
+                size: 64,
+                mtime: 0,
+                meta: Arc::default(),
+            });
+            root_children.push(open_ino);
+        }
         for dir in &top {
             root_children.push(fs.add_view(dir));
         }
@@ -91,7 +116,7 @@ impl MediaFs {
                 children: root_children,
             },
         );
-        Ok(fs)
+        fs
     }
 
     /// Turn a view tree into inodes, returning the directory's inode.
@@ -136,17 +161,15 @@ impl MediaFs {
         ino
     }
 
-    fn attr(ino: u64, node: &Node) -> FileAttr {
+    fn attr(ino: u64, node: &Node, dir_nlink: u32, mounted_at: u64) -> FileAttr {
         let (kind, size, stamp) = match node {
             Node::Dir { .. } => (FileType::Directory, 0, 0),
             Node::File { size, mtime, .. } => (FileType::RegularFile, *size, *mtime),
         };
-        // Use the server's date-added as the file date when we have it.
-        let when = if stamp > 0 {
-            UNIX_EPOCH + Duration::from_secs(stamp)
-        } else {
-            SystemTime::now()
-        };
+        // The server's date-added when we have it; otherwise the (fixed) mount time.
+        // Never "now": a timestamp that changes on every lookup makes file managers
+        // think the folder keeps changing and reload it.
+        let when = UNIX_EPOCH + Duration::from_secs(if stamp > 0 { stamp } else { mounted_at });
         FileAttr {
             ino,
             size,
@@ -154,14 +177,14 @@ impl MediaFs {
             atime: when,
             mtime: when,
             ctime: when,
-            crtime: if stamp > 0 { when } else { UNIX_EPOCH },
+            crtime: when,
             kind,
             perm: if kind == FileType::Directory {
                 0o755
             } else {
                 0o644
             },
-            nlink: 1,
+            nlink: if kind == FileType::Directory { dir_nlink } else { 1 },
             uid: 0,
             gid: 0,
             rdev: 0,
@@ -224,12 +247,21 @@ impl Filesystem for MediaFs {
                     Node::Dir { name, .. } | Node::File { name, .. } => name.as_str(),
                 };
                 if n == name {
-                    reply.entry(&TTL, &Self::attr(ino, node), 0);
+                    reply.entry(&TTL, &Self::attr(ino, node, if self.quirks.legacy { 1 } else { 2 }, self.mounted_at), 0);
                     return;
                 }
             }
         }
         reply.error(libc::ENOENT);
+    }
+
+    fn statfs(&mut self, _req: &Request, _ino: u64, reply: fuser::ReplyStatfs) {
+        if self.quirks.legacy {
+            reply.statfs(0, 0, 0, 0, 0, 512, 255, 0); // the library default
+        } else {
+            // A read-only, full filesystem like any other: sizes are not meaningful here.
+            reply.statfs(0, 0, 0, 0, 0, 4096, 255, 4096);
+        }
     }
 
     fn getxattr(&mut self, _req: &Request, ino: u64, name: &OsStr, size: u32, reply: ReplyXattr) {
@@ -255,7 +287,7 @@ impl Filesystem for MediaFs {
 
     fn getattr(&mut self, _req: &Request, ino: u64, _fh: Option<u64>, reply: ReplyAttr) {
         match self.inodes.get(&ino) {
-            Some(node) => reply.attr(&TTL, &Self::attr(ino, node)),
+            Some(node) => reply.attr(&TTL, &Self::attr(ino, node, if self.quirks.legacy { 1 } else { 2 }, self.mounted_at)),
             None => reply.error(libc::ENOENT),
         }
     }
@@ -390,11 +422,49 @@ pub fn mount_blocking(place_id: &str, mountpoint: &Path) -> Result<()> {
     let fs = MediaFs::build(place)?;
     let opts = vec![
         MountOption::FSName("neighbourhood-mediafs".into()),
+        // Registers as `fuse.neighbourhood-mediafs` (like `fuse.sshfs`) rather than bare `fuse`.
+        MountOption::Subtype("neighbourhood-mediafs".into()),
         MountOption::AllowOther,
         MountOption::AutoUnmount,
         MountOption::DefaultPermissions,
     ];
     fuser::mount2(fs, mountpoint, &opts).context("fuse mount")?;
+    Ok(())
+}
+
+/// Developer aid: mount a synthetic video library (no network, no root) so file-manager
+/// behaviour can be tested one variable at a time. `variant` is a comma list of
+/// `no_url`, `legacy`, `subtype`, `allow_other`, `default_permissions`, `autounmount`.
+pub fn mount_demo(mountpoint: &Path, variant: &str) -> Result<()> {
+    let has = |k: &str| variant.split(',').any(|v| v.trim() == k);
+    let entries: Vec<views::Entry> = (1..=60)
+        .map(|i| views::Entry {
+            title: format!("Movie {i:02}"),
+            genre: if i % 2 == 0 { "Action".into() } else { "Drama".into() },
+            added: 1_700_000_000 + i * 86_400,
+            size: 1_000_000 * i,
+            url: format!("http://127.0.0.1/{i}"),
+            ext: "mkv".into(),
+            ..Default::default()
+        })
+        .collect();
+    let place = Place::new("demo", Protocol::Video, "127.0.0.1");
+    let quirks = Quirks { no_url: has("no_url"), legacy: has("legacy") };
+    let fs = MediaFs::from_views(place, String::new(), views::video_views(&entries), None, quirks);
+    let mut opts = vec![MountOption::FSName("neighbourhood-mediafs".into())];
+    if has("subtype") {
+        opts.push(MountOption::Subtype("neighbourhood-mediafs".into()));
+    }
+    if has("allow_other") {
+        opts.push(MountOption::AllowOther);
+    }
+    if has("default_permissions") {
+        opts.push(MountOption::DefaultPermissions);
+    }
+    if has("autounmount") {
+        opts.push(MountOption::AutoUnmount);
+    }
+    fuser::mount2(fs, mountpoint, &opts).context("fuse demo mount")?;
     Ok(())
 }
 
