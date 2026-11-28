@@ -51,25 +51,35 @@ pub fn check_login(place: &Place, password: &str) -> Result<String> {
     Ok(format!("signed in as {}", place.username))
 }
 
+/// An authenticated connection to a Jellyfin server. The mount keeps it so file
+/// browsers can ask for expensive details (cast and crew) on demand.
+#[derive(Debug, Clone)]
+pub struct Conn {
+    pub base: String,
+    pub token: String,
+    /// Empty when the password field was an API key rather than a login.
+    pub user_id: String,
+    pub user: String,
+}
+
 pub fn list_entries(place: &Place, password: &str) -> Result<Vec<Entry>> {
-    list_entries_with(place, password, &session_path(place))
+    let conn = connect(place, password, &session_path(place))?;
+    list_with(&conn)
 }
 
 /// Connection order: (1) the saved access token, (2) sign in with the password and
 /// save the new token for next time, (3) treat the password as an API key.
-fn list_entries_with(
-    place: &Place,
-    password: &str,
-    session_file: &std::path::Path,
-) -> Result<Vec<Entry>> {
+pub fn connect(place: &Place, password: &str, session_file: &std::path::Path) -> Result<Conn> {
     let base = base_url(place);
+    let user = place.username.clone();
 
     // 1. Saved token from an earlier login: no password sent.
     if let Some(sess) = load_session_from(session_file) {
-        match fetch_items(&base, &sess.token, &sess.user_id, &place.username) {
-            Ok(entries) => {
+        let conn = Conn { base: base.clone(), token: sess.token, user_id: sess.user_id, user: user.clone() };
+        match get_json(&format!("{base}/Users/{}", conn.user_id), &conn.token, &user) {
+            Ok(_) => {
                 tracing::info!(place = %place.id, "jellyfin: connected with saved access token");
-                return Ok(entries);
+                return Ok(conn);
             }
             Err(e) => {
                 tracing::warn!(place = %place.id, "jellyfin: saved token rejected ({e}); signing in again");
@@ -80,41 +90,58 @@ fn list_entries_with(
 
     // 2. First login (or token revoked): sign in, then keep the token.
     let mut login_err = None;
-    if !place.username.is_empty() && !password.is_empty() {
-        match login(&base, &place.username, password) {
+    if !user.is_empty() && !password.is_empty() {
+        match login(&base, &user, password) {
             Ok((token, user_id)) => {
-                let sess = Session { token, user_id };
+                let sess = Session { token: token.clone(), user_id: user_id.clone() };
                 match save_session_to(session_file, &sess) {
                     Ok(()) => tracing::info!(place = %place.id, "jellyfin: signed in; access token saved for future connections"),
                     Err(e) => tracing::warn!(place = %place.id, "jellyfin: could not save access token: {e}"),
                 }
-                return fetch_items(&base, &sess.token, &sess.user_id, &place.username);
+                return Ok(Conn { base, token, user_id, user });
             }
             Err(e) => login_err = Some(e),
         }
     }
 
     // 3. The password field may itself be an API key.
-    match fetch_items(&base, password, "", &place.username) {
-        Ok(v) => Ok(v),
+    match get_json(&format!("{base}/System/Info"), password, &user) {
+        Ok(_) => Ok(Conn { base, token: password.to_string(), user_id: String::new(), user }),
         // Report the sign-in failure, which is the more useful message.
         Err(e) => Err(login_err.unwrap_or(e)),
     }
 }
 
-fn fetch_items(base: &str, token: &str, user_id: &str, user: &str) -> Result<Vec<Entry>> {
-    let scope = if user_id.is_empty() {
+/// Everything a file browser can show, except cast and crew (see `person_meta`).
+const FIELDS: &str = "Overview,Genres,DateCreated,MediaSources,Studios,ProviderIds,Taglines,OriginalTitle,PremiereDate,Path";
+
+pub fn list_with(c: &Conn) -> Result<Vec<Entry>> {
+    let scope = if c.user_id.is_empty() {
         "/Items".to_string()
     } else {
-        format!("/Users/{user_id}/Items")
+        format!("/Users/{}/Items", c.user_id)
     };
-    let query = "Recursive=true&IncludeItemTypes=Movie,Episode&Limit=3000\
-                 &Fields=Genres,DateCreated,MediaSources&SortBy=DateCreated&SortOrder=Descending";
-    let v = get_json(&format!("{base}{scope}?{query}"), token, user)?;
+    let query = format!(
+        "Recursive=true&IncludeItemTypes=Movie,Episode&Limit=3000&Fields={FIELDS}&SortBy=DateCreated&SortOrder=Descending"
+    );
+    let v = get_json(&format!("{}{scope}?{query}", c.base), &c.token, &c.user)?;
     let Some(items) = v.get("Items").and_then(|i| i.as_array()) else {
         bail!("Jellyfin returned no item list — check the username and password");
     };
-    Ok(items.iter().map(|it| item_entry(it, base, token)).collect())
+    Ok(items.iter().map(|it| item_entry(it, &c.base, &c.token)).collect())
+}
+
+/// Cast, director and writers for one item. Fetched only when a file browser asks,
+/// because including them in the main listing makes it about four times slower.
+pub fn person_meta(c: &Conn, item_id: &str) -> Result<super::meta::Meta> {
+    let url = if c.user_id.is_empty() {
+        format!("{}/Items?Ids={item_id}&Fields=People", c.base)
+    } else {
+        format!("{}/Users/{}/Items/{item_id}?Fields=People", c.base, c.user_id)
+    };
+    let v = get_json(&url, &c.token, &c.user)?;
+    let item = v.pointer("/Items/0").unwrap_or(&v);
+    Ok(super::meta::people_meta(item))
 }
 
 /// POST /Users/AuthenticateByName → (access token, user id).
@@ -145,8 +172,16 @@ fn item_entry(it: &Value, base: &str, token: &str) -> Entry {
     let text = |k: &str| it.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
     let id = text("Id");
     let src = it.pointer("/MediaSources/0");
+    // Episode names alone collide ("Pilot", "Finale"); prefix series and number.
+    let title = match (text("SeriesName").as_str(), text("Type").as_str()) {
+        (series, "Episode") if !series.is_empty() => {
+            let num = |k: &str| it.get(k).and_then(|v| v.as_u64()).unwrap_or(0);
+            format!("{series} - S{:02}E{:02} - {}", num("ParentIndexNumber"), num("IndexNumber"), text("Name"))
+        }
+        _ => text("Name"),
+    };
     Entry {
-        title: text("Name"),
+        title,
         genre: it
             .pointer("/Genres/0")
             .and_then(|g| g.as_str())
@@ -166,6 +201,7 @@ fn item_entry(it: &Value, base: &str, token: &str) -> Entry {
         } else {
             format!("{base}/Items/{id}/Download?api_key={token}")
         },
+        meta: std::sync::Arc::new(super::meta::video_meta(it, base)),
         ..Default::default()
     }
 }

@@ -2,7 +2,9 @@
 //! folder views shown in the mount: By Artist / By Album / By Genre /
 //! Recently Added. No network or FUSE here, so it is unit-testable.
 
+use super::meta::Meta;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 /// One playable item from a media server.
 #[derive(Debug, Clone, Default)]
@@ -19,6 +21,8 @@ pub struct Entry {
     pub url: String,
     /// File extension without the dot ("mp3", "mkv").
     pub ext: String,
+    /// Extended attributes shown by file browsers (shared between views).
+    pub meta: Arc<Meta>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -26,6 +30,9 @@ pub struct ViewFile {
     pub name: String,
     pub url: String,
     pub size: u64,
+    /// Unix seconds the server added it; used as the file's timestamp (0 = unknown).
+    pub mtime: u64,
+    pub meta: Arc<Meta>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -67,6 +74,8 @@ fn file(e: &Entry) -> ViewFile {
         name: file_name(e),
         url: e.url.clone(),
         size: e.size,
+        mtime: e.added,
+        meta: e.meta.clone(),
     }
 }
 
@@ -213,6 +222,7 @@ mod tests {
             size: 10,
             url: format!("http://x/{title}"),
             ext: "mp3".into(),
+            meta: Default::default(),
         }
     }
 

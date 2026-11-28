@@ -1,5 +1,6 @@
 mod airsonic;
 mod jellyfin;
+pub mod meta;
 pub mod views;
 
 use crate::config::{read_password, Config};
@@ -7,8 +8,9 @@ use crate::place::{Place, Protocol};
 use anyhow::{bail, Context, Result};
 use fuser::{
     FileAttr, FileType, Filesystem, MountOption, ReplyAttr, ReplyData, ReplyDirectory, ReplyEntry,
-    Request,
+    ReplyXattr, Request,
 };
+use std::sync::Arc;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::io::Read;
@@ -20,7 +22,15 @@ const TTL: Duration = Duration::from_secs(5);
 #[derive(Clone)]
 enum Node {
     Dir { name: String, children: Vec<u64> },
-    File { name: String, url: String, size: u64 },
+    File {
+        name: String,
+        url: String,
+        size: u64,
+        /// Unix seconds the server added it (0 = unknown); shown as the file's date.
+        mtime: u64,
+        /// Extended attributes served to file browsers.
+        meta: Arc<meta::Meta>,
+    },
 }
 
 struct MediaFs {
@@ -29,14 +39,22 @@ struct MediaFs {
     auth_token: String,
     inodes: HashMap<u64, Node>,
     next_ino: u64,
+    /// Live Jellyfin session, for details fetched when a file browser asks.
+    jf: Option<jellyfin::Conn>,
+    /// Cast/crew already fetched, by inode.
+    lazy_cache: HashMap<u64, meta::Meta>,
 }
 
 impl MediaFs {
     fn build(place: Place) -> Result<Self> {
         let password = read_password(&place).unwrap_or_default();
+        let mut jf = None;
         let top = match place.protocol {
             Protocol::Video => {
-                views::video_views(&jellyfin::list_entries(&place, &password)?)
+                let conn = jellyfin::connect(&place, &password, &jellyfin::session_path(&place))?;
+                let entries = jellyfin::list_with(&conn)?;
+                jf = Some(conn);
+                views::video_views(&entries)
             }
             Protocol::Audio => {
                 views::audio_views(&airsonic::list_entries(&place, &password)?)
@@ -49,6 +67,8 @@ impl MediaFs {
             auth_token: password,
             inodes: HashMap::new(),
             next_ino: 2,
+            jf,
+            lazy_cache: HashMap::new(),
         };
         let mut root_children = Vec::new();
         // Virtual "Open in browser" marker file
@@ -56,6 +76,8 @@ impl MediaFs {
             name: "Open in Browser.url".into(),
             url: fs.place_url(),
             size: 64,
+            mtime: 0,
+            meta: Arc::default(),
         });
         root_children.push(open_ino);
         for dir in &top {
@@ -83,6 +105,8 @@ impl MediaFs {
                 name: sanitize_name(&f.name),
                 url: f.url.clone(),
                 size: f.size,
+                mtime: f.mtime,
+                meta: f.meta.clone(),
             }));
         }
         self.alloc(Node::Dir {
@@ -113,18 +137,24 @@ impl MediaFs {
     }
 
     fn attr(ino: u64, node: &Node) -> FileAttr {
-        let (kind, size) = match node {
-            Node::Dir { .. } => (FileType::Directory, 0),
-            Node::File { size, .. } => (FileType::RegularFile, *size),
+        let (kind, size, stamp) = match node {
+            Node::Dir { .. } => (FileType::Directory, 0, 0),
+            Node::File { size, mtime, .. } => (FileType::RegularFile, *size, *mtime),
+        };
+        // Use the server's date-added as the file date when we have it.
+        let when = if stamp > 0 {
+            UNIX_EPOCH + Duration::from_secs(stamp)
+        } else {
+            SystemTime::now()
         };
         FileAttr {
             ino,
             size,
             blocks: size.div_ceil(512),
-            atime: SystemTime::now(),
-            mtime: SystemTime::now(),
-            ctime: SystemTime::now(),
-            crtime: UNIX_EPOCH,
+            atime: when,
+            mtime: when,
+            ctime: when,
+            crtime: if stamp > 0 { when } else { UNIX_EPOCH },
             kind,
             perm: if kind == FileType::Directory {
                 0o755
@@ -137,6 +167,46 @@ impl MediaFs {
             rdev: 0,
             blksize: 512,
             flags: 0,
+        }
+    }
+
+    /// Value of one extended attribute, fetching expensive ones on first use.
+    fn xattr_value(&mut self, ino: u64, name: &str) -> Option<String> {
+        let (meta, id) = match self.inodes.get(&ino)? {
+            Node::File { meta, .. } => (meta.clone(), meta.get("user.media.id").cloned()),
+            Node::Dir { .. } => return None,
+        };
+        if let Some(v) = meta.get(name) {
+            return Some(v.clone());
+        }
+        if !meta::LAZY.contains(&name) {
+            return None;
+        }
+        if !self.lazy_cache.contains_key(&ino) {
+            let fetched = match (&self.jf, id) {
+                (Some(conn), Some(id)) => jellyfin::person_meta(conn, &id).unwrap_or_default(),
+                _ => meta::Meta::new(),
+            };
+            self.lazy_cache.insert(ino, fetched);
+        }
+        self.lazy_cache.get(&ino)?.get(name).cloned()
+    }
+
+    /// Every attribute name this file can answer for (eager ones plus the lazy ones).
+    fn xattr_names(&self, ino: u64) -> Vec<String> {
+        match self.inodes.get(&ino) {
+            Some(Node::File { meta, .. }) => {
+                let mut v: Vec<String> = meta.keys().cloned().collect();
+                if self.jf.is_some() && meta.contains_key("user.media.id") {
+                    for l in meta::LAZY {
+                        if !v.iter().any(|k| k == l) {
+                            v.push(l.to_string());
+                        }
+                    }
+                }
+                v
+            }
+            _ => Vec::new(),
         }
     }
 }
@@ -160,6 +230,27 @@ impl Filesystem for MediaFs {
             }
         }
         reply.error(libc::ENOENT);
+    }
+
+    fn getxattr(&mut self, _req: &Request, ino: u64, name: &OsStr, size: u32, reply: ReplyXattr) {
+        match self.xattr_value(ino, &name.to_string_lossy()) {
+            None => reply.error(libc::ENODATA),
+            Some(v) => match meta::xattr_reply(v.as_bytes(), size) {
+                meta::XattrReply::Size(n) => reply.size(n),
+                meta::XattrReply::Data(d) => reply.data(&d),
+                meta::XattrReply::TooSmall => reply.error(libc::ERANGE),
+            },
+        }
+    }
+
+    fn listxattr(&mut self, _req: &Request, ino: u64, size: u32, reply: ReplyXattr) {
+        let names = self.xattr_names(ino);
+        let wire = meta::encode_names(names.iter().map(String::as_str));
+        match meta::xattr_reply(&wire, size) {
+            meta::XattrReply::Size(n) => reply.size(n),
+            meta::XattrReply::Data(d) => reply.data(&d),
+            meta::XattrReply::TooSmall => reply.error(libc::ERANGE),
+        }
     }
 
     fn getattr(&mut self, _req: &Request, ino: u64, _fh: Option<u64>, reply: ReplyAttr) {

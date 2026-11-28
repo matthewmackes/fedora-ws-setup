@@ -90,3 +90,12 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 ## Fix: mounts "timed out" for any place name containing a space
 - [x] Cause: `/proc/mounts` writes a space as `\040`, so the daemon never matched a successful mount to its path, then killed it and reported a timeout (SSH after 45 s, media after 60 s). The guided flow's default names ("host (SSH)", "host (Video)") all contain a space, so most new places hit it.
 - [x] Fix: `/proc/mounts` octal escapes are decoded before comparing (`unescape_mount_field`), with a regression test. Reproduced live first (mount up at 8 s, reported as a 45 s timeout), then verified fixed live: SSH 2.8 s and Video 5.0 s with spaced names. Test places removed.
+
+## Feature: media details exposed to file browsers (done)
+- [x] Every detail the server gives is served as extended attributes on each Audio/Video file: `user.media.*` (title, artist, album, year, track, disc, duration, bitrate, sample rate, format, play count, server path, ids; for video also resolution, codecs, frame rate, channels, audio/subtitle languages, container, ratings, overview, tagline, genres, studios, IMDb/TMDb ids, series/season/episode) plus the freedesktop `user.xdg.comment|tags|rating|origin.url` that KDE and other file managers already read. Pure extraction in `media/meta.rs`, 8 unit tests.
+- [x] Real file dates (server date-added) and sizes instead of "now".
+- [x] Cast, director and writers are fetched on demand (full listing would be about 4x slower: 17 MB / 4.7 s vs 33 MB / 20 s) and cached per file.
+- [x] Episodes are named `Series - S01E02 - Title` instead of colliding names like "Pilot".
+- [x] Read-only. No token or password appears in any attribute (tested, and checked across 80 live files).
+- [x] Verified live with `getfattr -d -m -`, `ls -l` and `stat` on Airsonic and Jellyfin (22 attributes per song, 40+ per movie). 60 unit tests pass.
+- Not included: cover art / posters as image files (possible follow-up).

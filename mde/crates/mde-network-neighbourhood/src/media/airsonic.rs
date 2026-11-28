@@ -93,6 +93,7 @@ fn song_entry(s: &Value, base: &str, auth: &str) -> Entry {
         size: s.get("size").and_then(|v| v.as_u64()).unwrap_or(0),
         url: format!("{base}/rest/stream.view?{auth}&id={id}"),
         ext: text("suffix"),
+        meta: std::sync::Arc::new(super::meta::audio_meta(s)),
     }
 }
 
