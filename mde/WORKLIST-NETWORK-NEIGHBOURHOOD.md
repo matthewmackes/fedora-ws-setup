@@ -65,7 +65,7 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 - [x] Live against the real Airsonic at 172.20.0.2 (admin login): 2,793 songs listed, 97 artists / 211 albums / 127 genres, four views populated, live FUSE mount through the installed daemon, real 24-bit 96 kHz FLAC bytes read through it. Test place removed afterwards.
 - [x] Fixed: Airsonic 10 rejects API version 1.16.1 ("Server must upgrade"); the client now sends 1.15.0.
 - [x] Jellyfin: added username/password login (`/Users/AuthenticateByName`), API key still works as a fallback. Live: server 10.10.5 reachable and rejects a bad login cleanly.
-- [ ] Jellyfin library listing/mount: server rejects every login tried (admin/root, two passwords) with HTTP 401, confirmed with curl on both auth headers. Needs the correct Jellyfin username/password or an API key.
+- [x] Jellyfin verified live (root login): 2,800 items, 22 genres, All / By Genre / Recently Added views, live FUSE mount, real MP4 bytes read. First successful login saves the access token (`<id>.jftoken`, root-only 0600, deleted with the place); later connections use only the token and fall back to the password if it is revoked. Journal showed "signed in; access token saved" then "connected with saved access token". Fixed: stream URLs now carry the token (file reads previously failed with EIO); helper logs now reach the journal. Test place removed.
 - [x] Fixed on the live system: an autofs placeholder counted as "mounted"; helper-driven places (media, password SSH) no longer get systemd units; UpsertPlace with an empty id no longer discards the caller's fields. Systemd unit names now match `systemd-escape -p` (dotted hosts were rejected).
 
 ### M6: Redesign
@@ -73,4 +73,4 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 - [x] Screenshot-reviewed. Found and fixed invisible accent buttons (theme gradient overriding background) and a clipped protocol chip.
 
 ## Verification status
-40 unit tests pass (+3 live checks run with `--ignored`) (`cargo test -p mde-network-neighbourhood`). Two items remain, both needing credentials rather than code: the SSH password for `mm@172.20.0.2` and a Jellyfin login (`sudo bash mde/data/network-neighbourhood/install.sh`).
+41 unit tests pass (+4 live checks run with `--ignored`) (`cargo test -p mde-network-neighbourhood`). Two items remain, both needing credentials rather than code: the SSH password for `mm@172.20.0.2` and a Jellyfin login (`sudo bash mde/data/network-neighbourhood/install.sh`).

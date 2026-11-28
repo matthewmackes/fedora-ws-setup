@@ -10,7 +10,9 @@ use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // stderr, so a `--mediafs` helper's log lines reach the daemon that spawned it.
     tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
         .with_env_filter(EnvFilter::from_default_env().add_directive("info".parse()?))
         .init();
 

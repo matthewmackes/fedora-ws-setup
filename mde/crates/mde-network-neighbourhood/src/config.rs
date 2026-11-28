@@ -319,6 +319,7 @@ pub fn delete_credentials(place: &Place) -> Result<()> {
     if path.exists() {
         fs::remove_file(&path).with_context(|| format!("remove {}", path.display()))?;
     }
+    let _ = fs::remove_file(PathBuf::from(CREDS_DIR).join(format!("{}.jftoken", place.id)));
     let key = PathBuf::from(CREDS_DIR).join(format!("{}.key", place.id));
     if key.exists() {
         fs::remove_file(&key).with_context(|| format!("remove {}", key.display()))?;

@@ -501,19 +501,18 @@ fn settle_check(child: &mut std::process::Child, mp: &str) -> Option<String> {
 /// its exit status and stderr reach the journal.
 fn watch_helper(mut child: std::process::Child, id: String, mp: String) {
     std::thread::spawn(move || {
-        let stderr = child.stderr.take();
-        let status = child.wait();
-        let mut err = String::new();
-        if let Some(mut s) = stderr {
-            let _ = std::io::Read::read_to_string(&mut s, &mut err);
+        // Stream the helper's stderr into the journal line by line as it arrives.
+        if let Some(stderr) = child.stderr.take() {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(stderr).lines().map_while(|l| l.ok()) {
+                let line = crate::connect::redact(line.trim());
+                if !line.is_empty() {
+                    tracing::info!(place = %id, mount = %mp, "helper: {line}");
+                }
+            }
         }
-        tracing::warn!(
-            place = %id,
-            mount = %mp,
-            status = ?status,
-            stderr = %crate::connect::redact(err.trim()),
-            "mount helper exited"
-        );
+        let status = child.wait();
+        tracing::warn!(place = %id, mount = %mp, status = ?status, "mount helper exited");
     });
 }
 

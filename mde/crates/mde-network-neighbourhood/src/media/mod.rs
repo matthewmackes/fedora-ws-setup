@@ -251,7 +251,8 @@ fn fetch_range(
 ) -> Result<Vec<u8>> {
     let end = offset + size.saturating_sub(1);
     let mut req = ureq::get(url).set("Range", &format!("bytes={offset}-{end}"));
-    if jellyfin_auth && !token.is_empty() {
+    // Jellyfin URLs from list_entries already carry `api_key=`; don't override it.
+    if jellyfin_auth && !token.is_empty() && !url.contains("api_key=") {
         req = req
             .set("X-Emby-Token", token)
             .set("Authorization", &format!("MediaBrowser Token=\"{token}\""));
