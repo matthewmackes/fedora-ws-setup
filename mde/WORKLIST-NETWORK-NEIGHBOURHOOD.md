@@ -81,3 +81,8 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 - [x] Hosts found on the network are offered per type; SMB shares are listed for picking.
 - [x] Real pre-save check for every type, including a Jellyfin/Airsonic sign-in. Walked through on screen against the live Airsonic server.
 - [x] "Paste a URI instead…" keeps the old single-form editor; Browse network now starts the guided flow at the sign-in step.
+
+## Housekeeping notes
+- [x] Two stray places created by test automation (`172.20.0.21 (SSH)`, `adminadmin`) were removed via the daemon; only the user's `ssh:172.20.0.2` place remains.
+- [x] Audit at close: 0 unchecked, 0 partial, 34 done; 51 tests pass; installed daemon and GUI byte-identical to the build of HEAD; daemon active and answering.
+- Not removed (needs root, harmless): a stale `/etc/systemd/system/mnt-network-SSH-172\x2e20\x2e0\x2e2-ssh_172\x2e20\x2e0\x2e2.mount` left from before the unit-name fix. Remove with `sudo rm` plus `systemctl daemon-reload` when convenient.
