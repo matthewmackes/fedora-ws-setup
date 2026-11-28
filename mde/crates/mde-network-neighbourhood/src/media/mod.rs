@@ -311,3 +311,50 @@ pub fn open_in_browser(place: &Place) -> Result<()> {
     let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
     Ok(())
 }
+
+#[cfg(test)]
+mod live {
+    //! Manual checks against a real server: `NN_LIVE_HOST=172.20.0.2 cargo test live -- --ignored --nocapture`.
+    use crate::place::{Place, Protocol};
+
+    fn host() -> String {
+        std::env::var("NN_LIVE_HOST").unwrap_or_default()
+    }
+
+    #[test]
+    #[ignore]
+    fn airsonic_rejects_bad_login_with_a_clear_message() {
+        let mut p = Place::new("a", Protocol::Audio, &host());
+        p.username = "nn-probe".into();
+        let err = super::airsonic::list_entries(&p, "x").unwrap_err().to_string();
+        println!("airsonic: {err}");
+        assert!(err.contains("Wrong username or password"), "{err}");
+    }
+
+    #[test]
+    #[ignore]
+    fn jellyfin_rejects_bad_login() {
+        let mut p = Place::new("j", Protocol::Video, &host());
+        p.username = "nn-probe".into();
+        let err = format!("{:#}", super::jellyfin::list_entries(&p, "x").unwrap_err());
+        println!("jellyfin: {err}");
+        assert!(err.contains("401") || err.to_lowercase().contains("login"), "{err}");
+    }
+
+    #[test]
+    #[ignore]
+    fn airsonic_lists_real_library() {
+        let mut p = Place::new("a", Protocol::Audio, &host());
+        p.username = std::env::var("NN_LIVE_USER").unwrap_or_default();
+        let pw = std::env::var("NN_LIVE_PASS").unwrap_or_default();
+        let entries = super::airsonic::list_entries(&p, &pw).expect("list");
+        println!("songs: {}", entries.len());
+        let views = crate::media::views::audio_views(&entries);
+        for v in &views {
+            println!("  {}: {} entries; first: {:?}", v.name, v.dirs.len(), v.dirs.first().map(|d| d.name.clone()));
+        }
+        let artist = views[0].dirs.iter().find(|a| a.name.to_lowercase().contains("alien")).cloned();
+        println!("alien ant farm: {:?}", artist.map(|a| a.dirs.iter().map(|d| d.name.clone()).collect::<Vec<_>>()));
+        assert!(!entries.is_empty());
+    }
+}

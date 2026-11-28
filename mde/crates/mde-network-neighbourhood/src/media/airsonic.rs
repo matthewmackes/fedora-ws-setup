@@ -107,7 +107,7 @@ fn auth_query(place: &Place, password: &str) -> String {
     let user = if place.username.is_empty() { "admin" } else { place.username.as_str() };
     // `enc:` hex keeps special characters in the password from breaking the URL.
     format!(
-        "u={}&p=enc:{}&v=1.16.1&c=NetworkNeighbourhood&f=json",
+        "u={}&p=enc:{}&v=1.15.0&c=NetworkNeighbourhood&f=json",
         url::form_urlencoded::byte_serialize(user.as_bytes()).collect::<String>(),
         hex(password)
     )
@@ -134,6 +134,13 @@ fn get_json(url: &str) -> Result<Value> {
 mod tests {
     use super::*;
     use crate::place::Protocol;
+
+    #[test]
+    fn uses_protocol_version_airsonic_accepts() {
+        // Airsonic 10.x answers "Incompatible ... Server must upgrade" to anything newer.
+        let p = Place::new("m", Protocol::Audio, "h");
+        assert!(auth_query(&p, "x").contains("v=1.15.0"));
+    }
 
     #[test]
     fn password_is_hex_encoded() {

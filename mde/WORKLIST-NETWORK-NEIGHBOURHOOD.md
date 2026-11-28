@@ -36,7 +36,9 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 - [x] Crate builds again and is a workspace member.
 - [x] Error classification (`diagnose.rs`, 6 tests): network / auth / software / host key, with cause, fix and auto-fix.
 - [x] Journal logging of steps, failures and the redacted sshfs command line.
-- [ ] Install and verify a real SSH mount end to end (needs `sudo`; see below).
+- [x] Installed the new daemon and GUI (via pkexec; old binaries backed up as `*.bak-20261127`) and verified in the live daemon: MountPlace now replies (was a 95 s hang), logs every step to the journal, records history, and classifies failures.
+- [x] Found and fixed on the live system: sshfs registers the FUSE mount before login is confirmed, so a wrong password briefly looked "Connected". The mount must now stay up and be readable before success is reported.
+- [ ] Positive SSH password mount: `mm@172.20.0.2` is rejected with `Permission denied`, so the saved password is wrong. Needs the right password (Edit credentials), then retry.
 
 ### M2: Connecting dialog and error UX
 - [x] Modal dialog: step checklist, progress bar, collapsed Details log, Cancel (`ui/connect_dialog.rs`).
@@ -59,11 +61,15 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 - [x] Subsonic and Jellyfin backends return flat entries; `media/views.rs` builds By Artist / By Album / By Genre / Recently Added (video: All / By Genre / Recently Added). 12 unit tests.
 - [x] Read-only. Helper failures and timeouts are now reported instead of always "succeeding".
 - [x] Subsonic client exercised over real HTTP against a local mock server (songs → views; wrong password surfaces the server message and classifies as Auth).
-- [ ] Not exercised against a real Jellyfin/Airsonic server, nor a live FUSE mount (needs root for `allow_other`).
+- [x] Live against the real Airsonic at 172.20.0.2 (admin login): 2,793 songs listed, 97 artists / 211 albums / 127 genres, four views populated, live FUSE mount through the installed daemon, real 24-bit 96 kHz FLAC bytes read through it. Test place removed afterwards.
+- [x] Fixed: Airsonic 10 rejects API version 1.16.1 ("Server must upgrade"); the client now sends 1.15.0.
+- [x] Jellyfin: added username/password login (`/Users/AuthenticateByName`), API key still works as a fallback. Live: server 10.10.5 reachable and rejects a bad login cleanly.
+- [ ] Jellyfin library listing/mount not run with real credentials (none provided).
+- [x] Fixed on the live system: an autofs placeholder counted as "mounted"; helper-driven places (media, password SSH) no longer get systemd units; UpsertPlace with an empty id no longer discards the caller's fields. Systemd unit names now match `systemd-escape -p` (dotted hosts were rejected).
 
 ### M6: Redesign
 - [x] Colours from the MDE `Palette`; 12 px card radius; status stripe, protocol chip, last-seen line.
 - [x] Screenshot-reviewed. Found and fixed invisible accent buttons (theme gradient overriding background) and a clipped protocol chip.
 
 ## Verification status
-37 unit tests pass (`cargo test -p mde-network-neighbourhood`). The one remaining open item is the live end-to-end SSH mount (M1) plus real Jellyfin/Airsonic: they need the new daemon installed, which needs root (`sudo bash mde/data/network-neighbourhood/install.sh`).
+40 unit tests pass (+3 live checks run with `--ignored`) (`cargo test -p mde-network-neighbourhood`). Two items remain, both needing credentials rather than code: the SSH password for `mm@172.20.0.2` and a Jellyfin login (`sudo bash mde/data/network-neighbourhood/install.sh`).

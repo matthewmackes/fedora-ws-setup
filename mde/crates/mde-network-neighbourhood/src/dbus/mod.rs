@@ -58,7 +58,11 @@ impl NeighbourhoodService {
     async fn upsert_place(&self, place_json: String, password: String) -> zbus::fdo::Result<String> {
         let mut place: Place = serde_json::from_str(&place_json).map_err(to_fdo)?;
         if place.id.is_empty() {
-            place = Place::new(place.name.clone(), place.protocol, place.host.clone());
+            // Assign an id but keep everything the caller set (port, user, policy, ...).
+            place.id = uuid::Uuid::new_v4().to_string();
+            if place.credential_file.is_empty() {
+                place.credential_file = format!("{}.cred", place.id);
+            }
         }
         place.sync_automount_flag();
         if place.credential_scope == crate::place::CredentialScope::User

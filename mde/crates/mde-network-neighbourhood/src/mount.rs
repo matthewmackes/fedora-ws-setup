@@ -10,16 +10,34 @@ use std::process::{Command, Stdio};
 
 const UNIT_DIR: &str = "/etc/systemd/system";
 
+/// True only for a real, usable mount. A systemd `autofs` placeholder sitting on the
+/// path (automount waiting for first access) is not a mount: reading it can fail
+/// with "No such device", so it must not count as connected.
 pub fn is_mounted(mount_point: &str) -> bool {
-    if let Ok(mounts) = fs::read_to_string("/proc/mounts") {
-        return mounts.lines().any(|l| {
-            l.split_whitespace()
-                .nth(1)
-                .map(|p| p == mount_point)
-                .unwrap_or(false)
-        });
+    match fs::read_to_string("/proc/mounts") {
+        Ok(mounts) => mounts_contains_real(&mounts, mount_point),
+        Err(_) => false,
     }
-    false
+}
+
+fn mounts_contains_real(proc_mounts: &str, mount_point: &str) -> bool {
+    proc_mounts.lines().any(|l| {
+        let mut f = l.split_whitespace();
+        let target = f.nth(1);
+        let fstype = f.next();
+        target == Some(mount_point) && fstype != Some("autofs")
+    })
+}
+
+/// Places mounted by our own helper process (sshfs with a password, the media
+/// FUSE daemon) must not get systemd mount/automount units: systemd would run
+/// them without the password or helper and fail.
+pub fn uses_systemd(place: &Place) -> bool {
+    match place.protocol {
+        Protocol::Video | Protocol::Audio => false,
+        Protocol::Ssh => PathBuf::from(CREDS_DIR).join(format!("{}.key", place.id)).exists(),
+        _ => true,
+    }
 }
 
 pub fn place_reachable(place: &Place) -> bool {
@@ -164,6 +182,9 @@ fn mount_timeouts() -> (u64, u64) {
 
 pub fn write_systemd_units(place: &Place) -> Result<()> {
     ensure_mount_root()?;
+    if !uses_systemd(place) {
+        return Ok(());
+    }
     let (what, where_, fstype, mut options) = mount_spec(place)?;
     if let Ok(cfg) = Config::load() {
         if let Some(extra) = cfg.settings.mount_option_presets.get(place.protocol.as_str()) {
@@ -263,6 +284,9 @@ pub fn daemon_reload() -> Result<()> {
 }
 
 pub fn enable_place(place: &Place) -> Result<()> {
+    if !uses_systemd(place) {
+        return Ok(());
+    }
     write_systemd_units(place)?;
     daemon_reload()?;
     let stem = systemd_path_unit(&place.mount_point());
@@ -404,8 +428,15 @@ fn mount_sshfs_password(place: &Place) -> Result<()> {
             bail!("connect cancelled");
         }
         if is_mounted(&mp) {
-            // Keep sshfs running; intentionally leak/forget the Child.
-            std::mem::forget(child);
+            // sshfs registers the FUSE mount before the login is confirmed, so a
+            // wrong password still shows up here briefly. Require the helper to
+            // stay alive and the folder to be readable before calling it connected.
+            if let Some(err) = settle_check(&mut child, &mp) {
+                let _ = unmount_now(place);
+                bail!("{err}");
+            }
+            // Keep sshfs running; a watcher thread reaps it and journals why it exited.
+            watch_helper(child, place.id.clone(), mp.clone());
             sync_drive_letter(place)?;
             return Ok(());
         }
@@ -438,6 +469,54 @@ fn mount_sshfs_password(place: &Place) -> Result<()> {
     }
 }
 
+/// After the mount first appears, watch it for a moment. Returns the failure
+/// text if the helper exits (e.g. "Permission denied") or the folder is unreadable.
+fn settle_check(child: &mut std::process::Child, mp: &str) -> Option<String> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(2500);
+    while std::time::Instant::now() < deadline {
+        if let Ok(Some(status)) = child.try_wait() {
+            let err = child
+                .stderr
+                .take()
+                .and_then(|mut s| {
+                    let mut buf = String::new();
+                    std::io::Read::read_to_string(&mut s, &mut buf).ok()?;
+                    Some(buf)
+                })
+                .unwrap_or_default();
+            return Some(format!(
+                "sshfs exited ({status}): {}",
+                err.trim().chars().take(400).collect::<String>()
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(150));
+    }
+    match std::fs::read_dir(mp) {
+        Ok(_) => None,
+        Err(e) => Some(format!("mounted folder is not readable: {e}")),
+    }
+}
+
+/// Wait for a long-running mount helper in the background so it is reaped and
+/// its exit status and stderr reach the journal.
+fn watch_helper(mut child: std::process::Child, id: String, mp: String) {
+    std::thread::spawn(move || {
+        let stderr = child.stderr.take();
+        let status = child.wait();
+        let mut err = String::new();
+        if let Some(mut s) = stderr {
+            let _ = std::io::Read::read_to_string(&mut s, &mut err);
+        }
+        tracing::warn!(
+            place = %id,
+            mount = %mp,
+            status = ?status,
+            stderr = %crate::connect::redact(err.trim()),
+            "mount helper exited"
+        );
+    });
+}
+
 fn mount_media_fuse(place: &Place) -> Result<()> {
     ensure_mount_root()?;
     let mp = place.mount_point();
@@ -466,7 +545,7 @@ fn mount_media_fuse(place: &Place) -> Result<()> {
             bail!("connect cancelled");
         }
         if is_mounted(&mp) {
-            std::mem::forget(child);
+            watch_helper(child, place.id.clone(), mp.clone());
             sync_drive_letter(place)?;
             return Ok(());
         }
@@ -497,20 +576,22 @@ fn mount_media_fuse(place: &Place) -> Result<()> {
     }
 }
 
-/// systemd-escape -p equivalent for a mount path.
+/// `systemd-escape -p` equivalent: `/` becomes `-`; only `[A-Za-z0-9:_.]` stay
+/// literal (a leading `.` is escaped); everything else, including `-`, is `\xNN`.
 pub fn systemd_path_unit(path: &str) -> String {
-    let trimmed = path.trim_start_matches('/');
+    let trimmed = path.trim_matches('/');
+    if trimmed.is_empty() {
+        return "-".into();
+    }
     let mut out = String::new();
     for (i, c) in trimmed.chars().enumerate() {
         match c {
             '/' => out.push('-'),
-            '-' if i > 0 => out.push_str("\\x2d"),
-            '\\' => out.push_str("\\x5c"),
-            ':' => out.push_str("\\x3a"),
-            '.' => out.push_str("\\x2e"),
-            c if c.is_ascii_alphanumeric() || c == '_' => out.push(c),
+            '.' if i == 0 => out.push_str("\\x2e"),
+            c if c.is_ascii_alphanumeric() || matches!(c, ':' | '_' | '.') => out.push(c),
             c => {
-                for b in c.to_string().into_bytes() {
+                let mut buf = [0u8; 4];
+                for b in c.encode_utf8(&mut buf).bytes() {
                     out.push_str(&format!("\\x{b:02x}"));
                 }
             }
@@ -895,8 +976,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn autofs_placeholder_is_not_a_mount() {
+        let m = "systemd-1 /mnt/x autofs rw 0 0\nsrv:/a /mnt/y nfs rw 0 0\nfoo /mnt/x fuse.sshfs rw 0 0\n";
+        assert!(mounts_contains_real(m, "/mnt/x"), "real mount stacked on autofs counts");
+        assert!(mounts_contains_real(m, "/mnt/y"));
+        assert!(!mounts_contains_real("systemd-1 /mnt/x autofs rw 0 0\n", "/mnt/x"));
+        assert!(!mounts_contains_real(m, "/mnt/none"));
+    }
+
+    #[test]
+    fn helper_mounted_places_skip_systemd() {
+        assert!(!uses_systemd(&Place::new("m", Protocol::Audio, "h")));
+        assert!(!uses_systemd(&Place::new("m", Protocol::Video, "h")));
+        assert!(!uses_systemd(&Place::new("s", Protocol::Ssh, "h")), "no key yet");
+        assert!(uses_systemd(&Place::new("n", Protocol::Nfs, "h")));
+    }
+
+    #[test]
     fn escape_mount_path() {
         let u = systemd_path_unit("/mnt/network/SMB/nas/media");
         assert_eq!(u, "mnt-network-SMB-nas-media");
+        // Must match `systemd-escape -p` exactly or systemd refuses the unit
+        // ("Where= setting doesn't match unit name").
+        assert_eq!(
+            systemd_path_unit("/mnt/network/SSH/172.20.0.2/ssh_172.20.0.2"),
+            "mnt-network-SSH-172.20.0.2-ssh_172.20.0.2"
+        );
+        assert_eq!(
+            systemd_path_unit("/mnt/network/SMB/NAS.local/My Share"),
+            "mnt-network-SMB-NAS.local-My\\x20Share"
+        );
+        assert_eq!(systemd_path_unit("/mnt/network/NFS/a-b/x"), "mnt-network-NFS-a\\x2db-x");
     }
 }

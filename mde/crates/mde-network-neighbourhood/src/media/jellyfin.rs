@@ -7,19 +7,54 @@ use serde_json::Value;
 
 pub fn list_entries(place: &Place, password: &str) -> Result<Vec<Entry>> {
     let base = base_url(place);
-    // The password field stores the Jellyfin API key / access token.
-    let v = get_json(
-        &format!(
-            "{base}/Items?Recursive=true&IncludeItemTypes=Movie,Episode&Limit=3000\
-             &Fields=Genres,DateCreated,MediaSources&SortBy=DateCreated&SortOrder=Descending"
-        ),
-        password,
-        &place.username,
-    )?;
+    // Sign in with username + password when both are set; the password field may
+    // instead hold an API key / access token, so fall back to using it as one.
+    let mut login_err = None;
+    let (token, scope) = if !place.username.is_empty() && !password.is_empty() {
+        match login(&base, &place.username, password) {
+            Ok((token, user_id)) => (token, format!("/Users/{user_id}/Items")),
+            Err(e) => {
+                login_err = Some(e);
+                (password.to_string(), "/Items".to_string())
+            }
+        }
+    } else {
+        (password.to_string(), "/Items".to_string())
+    };
+
+    let query = "Recursive=true&IncludeItemTypes=Movie,Episode&Limit=3000\
+                 &Fields=Genres,DateCreated,MediaSources&SortBy=DateCreated&SortOrder=Descending";
+    let v = match get_json(&format!("{base}{scope}?{query}"), &token, &place.username) {
+        Ok(v) => v,
+        // Report the sign-in failure, which is the more useful message.
+        Err(e) => return Err(login_err.unwrap_or(e)),
+    };
     let Some(items) = v.get("Items").and_then(|i| i.as_array()) else {
-        bail!("Jellyfin returned no item list — check the API key");
+        bail!("Jellyfin returned no item list — check the username and password");
     };
     Ok(items.iter().map(|it| item_entry(it, &base)).collect())
+}
+
+/// POST /Users/AuthenticateByName → (access token, user id).
+fn login(base: &str, user: &str, password: &str) -> Result<(String, String)> {
+    let resp = ureq::post(&format!("{base}/Users/AuthenticateByName"))
+        .timeout(std::time::Duration::from_secs(20))
+        .set("X-Emby-Authorization", &client_header(""))
+        .send_json(serde_json::json!({ "Username": user, "Pw": password }))
+        .context("Jellyfin login failed")?;
+    let v: Value = resp.into_json()?;
+    let token = v.get("AccessToken").and_then(|t| t.as_str());
+    let uid = v.pointer("/User/Id").and_then(|t| t.as_str());
+    match (token, uid) {
+        (Some(t), Some(u)) => Ok((t.to_string(), u.to_string())),
+        _ => bail!("Jellyfin login failed: unexpected reply"),
+    }
+}
+
+fn client_header(user: &str) -> String {
+    format!(
+        "MediaBrowser Client=\"NetworkNeighbourhood\", Device=\"MDE\", DeviceId=\"mde-nethood\", Version=\"2026.0\", UserId=\"{user}\""
+    )
 }
 
 fn item_entry(it: &Value, base: &str) -> Entry {
@@ -57,12 +92,9 @@ fn base_url(place: &Place) -> String {
 }
 
 fn get_json(url: &str, token: &str, user: &str) -> Result<Value> {
-    let mut req = ureq::get(url).timeout(std::time::Duration::from_secs(20)).set(
-        "X-Emby-Authorization",
-        &format!(
-            "MediaBrowser Client=\"NetworkNeighbourhood\", Device=\"MDE\", DeviceId=\"mde-nethood\", Version=\"2026.0\", UserId=\"{user}\""
-        ),
-    );
+    let mut req = ureq::get(url)
+        .timeout(std::time::Duration::from_secs(20))
+        .set("X-Emby-Authorization", &client_header(user));
     if !token.is_empty() {
         req = req
             .set("X-Emby-Token", token)
