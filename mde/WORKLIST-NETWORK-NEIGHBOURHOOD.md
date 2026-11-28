@@ -106,3 +106,9 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 - [x] Fix: the daemon takes a handle on the mount-point directory before mounting and touches the original directory after the mount succeeds (`StaleViewNudge`), which makes file managers re-read it. Verified on the real Video place: Thunar open on the unmounted folder (empty) fills in by itself on Connect. Unit test added.
 - [x] Also (hardening found along the way): folder timestamps are stable (mount time) instead of "now" on every lookup, real link counts and a normal `statfs`, and the media mount registers as `fuse.neighbourhood-mediafs`. These did not change the symptom.
 - [x] Dev aid: `network-neighbourhoodd --mediafs-demo <dir> [options]` mounts a synthetic library without root or network, for testing file-manager behaviour.
+
+## Feature: Audio and Video open in VLC's file browser (done)
+- [x] Connect / Open on an Audio or Video place now opens VLC (falls back to the file manager if VLC is not installed). No playlist is used: VLC is started empty so its own browser is used.
+- [x] The mounted library is published as `~/Videos/<name>` (Video) or `~/Music/<name>` (Audio), so it appears as a folder under VLC's **My Videos** / **My Music**. Verified on the live Jellyfin place: My Videos lists the place as a folder.
+- [x] VLC keeps its browser sidebar in the playlist panel and remembers it as hidden, so the app turns that panel on in VLC's config (only while VLC is not running; VLC rewrites the file on exit). Tested with `ini_set` unit tests.
+- Limit: VLC has no option to preselect a sidebar entry and does not remember one, so it opens with the sidebar visible and My Videos / My Music one click away.

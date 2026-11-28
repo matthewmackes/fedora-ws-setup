@@ -1014,7 +1014,7 @@ fn open_place(
             .borrow_mut()
             .connects
             .insert(place.id.clone(), progress);
-        let _ = mount::open_in_files(&place.mount_point());
+        let _ = mount::open_place_location(&place);
         return;
     }
 
@@ -1123,7 +1123,7 @@ fn open_place(
                     state2.borrow_mut().connects.insert(id.clone(), progress);
                     link_into_home(&place2);
                     if mount::is_mounted(&place_mp) {
-                        let _ = mount::open_in_files(&place_mp);
+                        let _ = mount::open_place_location(&place2);
                     }
                     // Rebuild once so badge / Connect button flip to Mounted.
                     refresh2();

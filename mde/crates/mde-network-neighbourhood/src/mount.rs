@@ -978,6 +978,141 @@ pub fn smb_list_shares(host: &str, username: &str, password: &str) -> Result<Vec
     Ok(shares)
 }
 
+/// How a place is opened when you click Connect / Open.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Opener {
+    /// VLC, which browses `~/Videos` ("My Videos") and `~/Music` ("My Music").
+    Vlc,
+    /// The desktop's file manager.
+    Files,
+}
+
+/// Audio and Video places open in VLC when it is installed; everything else, and
+/// Audio/Video without VLC, opens in the file manager.
+pub fn choose_opener(protocol: Protocol, vlc_installed: bool) -> Opener {
+    match protocol {
+        Protocol::Audio | Protocol::Video if vlc_installed => Opener::Vlc,
+        _ => Opener::Files,
+    }
+}
+
+fn vlc_installed() -> bool {
+    std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).any(|d| d.join("vlc").is_file()))
+        .unwrap_or(false)
+}
+
+/// `<Videos or Music folder>/<place name>`, the entry VLC's "My Videos" / "My Music"
+/// browsers show for this place. `None` for protocols that are not media.
+pub fn media_library_link_in(
+    videos: Option<PathBuf>,
+    music: Option<PathBuf>,
+    place: &Place,
+) -> Option<PathBuf> {
+    let base = match place.protocol {
+        Protocol::Video => videos?,
+        Protocol::Audio => music?,
+        _ => return None,
+    };
+    Some(base.join(place.name.replace('/', "_")))
+}
+
+/// Publish the mounted library in the standard Videos/Music folder so VLC's
+/// "My Videos" / "My Music" file browsers list it as a folder.
+pub fn link_media_library(place: &Place) -> Option<PathBuf> {
+    let link = media_library_link_in(dirs::video_dir(), dirs::audio_dir(), place)?;
+    let _ = fs::create_dir_all(link.parent()?);
+    let _ = fs::remove_file(&link);
+    std::os::unix::fs::symlink(place.mount_point(), &link).ok()?;
+    Some(link)
+}
+
+/// Set `key=value` inside `[section]` of an INI file's text, adding the key or the
+/// section if missing. Everything else is left byte-for-byte as it was.
+pub fn ini_set(text: &str, section: &str, key: &str, value: &str) -> String {
+    let header = format!("[{section}]");
+    let mut out: Vec<String> = Vec::new();
+    let mut in_section = false;
+    let mut done = false;
+    let mut saw_section = false;
+    for line in text.lines() {
+        let t = line.trim();
+        if t.starts_with('[') && t.ends_with(']') {
+            if in_section && !done {
+                out.push(format!("{key}={value}"));
+                done = true;
+            }
+            in_section = t == header;
+            saw_section |= in_section;
+        } else if in_section && !done && t.split('=').next().map(str::trim) == Some(key) {
+            out.push(format!("{key}={value}"));
+            done = true;
+            continue;
+        }
+        out.push(line.to_string());
+    }
+    if in_section && !done {
+        out.push(format!("{key}={value}"));
+        done = true;
+    }
+    if !saw_section {
+        if !out.is_empty() && !out.last().map(|l| l.is_empty()).unwrap_or(true) {
+            out.push(String::new());
+        }
+        out.push(header);
+        out.push(format!("{key}={value}"));
+    }
+    let _ = done;
+    let mut r = out.join("\n");
+    r.push('\n');
+    r
+}
+
+/// VLC keeps its browser sidebar (My Videos, My Music, ...) inside the playlist panel,
+/// and remembers that panel as hidden. Show it so VLC opens with the browser visible.
+/// VLC rewrites this file on exit, so only change it while VLC is not running.
+fn show_vlc_browser() {
+    let running = Command::new("pgrep")
+        .args(["-x", "vlc"])
+        .stdout(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    let Some(path) = dirs::config_dir().map(|d| d.join("vlc/vlc-qt-interface.conf")) else { return };
+    if running {
+        return;
+    }
+    let text = fs::read_to_string(&path).unwrap_or_default();
+    let new = ini_set(&text, "MainWindow", "playlist-visible", "true");
+    if new != text {
+        let _ = fs::create_dir_all(path.parent().unwrap_or(Path::new(".")));
+        let _ = fs::write(&path, new);
+    }
+}
+
+/// The default "open" for a place: VLC for Audio/Video, the file manager otherwise.
+pub fn open_place_location(place: &Place) -> Result<()> {
+    let mount_point = place.mount_point();
+    let opener = choose_opener(place.protocol, vlc_installed());
+    if opener == Opener::Vlc {
+        link_media_library(place);
+        show_vlc_browser();
+        // No file argument: VLC opens its own browser (My Videos / My Music in the
+        // sidebar) instead of queueing the folder as a playlist. One window only.
+        let started = Command::new("vlc")
+            .args(["--one-instance", "--no-playlist-autostart"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        if started.is_ok() {
+            return Ok(());
+        }
+        tracing::warn!("could not start VLC; opening the file manager instead");
+    }
+    open_in_files(&mount_point)
+}
+
 pub fn open_in_files(path: &str) -> Result<()> {
     // Never .status() — waiting on the file manager freezes callers.
     Command::new("xdg-open")
@@ -1036,6 +1171,51 @@ mod tests {
         assert_eq!(unescape_mount_field("a\\011b\\134c"), "a\tb\\c");
         assert_eq!(unescape_mount_field("plain"), "plain");
         assert_eq!(unescape_mount_field("trailing\\04"), "trailing\\04");
+    }
+
+    #[test]
+    fn ini_set_changes_one_key_and_keeps_the_rest() {
+        let src = "[General]\nfiledialog-path=x\n\n[MainWindow]\nadv-controls=0\nplaylist-visible=false\nstatus-bar-visible=false\n\n[Playlist]\nzoom=0\n";
+        let out = ini_set(src, "MainWindow", "playlist-visible", "true");
+        assert!(out.contains("playlist-visible=true") && !out.contains("playlist-visible=false"));
+        assert!(out.contains("filedialog-path=x") && out.contains("zoom=0") && out.contains("adv-controls=0"));
+        assert_eq!(out.matches("playlist-visible").count(), 1);
+    }
+
+    #[test]
+    fn ini_set_adds_missing_key_and_missing_section() {
+        let a = ini_set("[MainWindow]\nadv-controls=0\n[Playlist]\nzoom=0\n", "MainWindow", "playlist-visible", "true");
+        assert!(a.contains("[MainWindow]\nadv-controls=0\nplaylist-visible=true\n[Playlist]"));
+        let b = ini_set("", "MainWindow", "playlist-visible", "true");
+        assert_eq!(b, "[MainWindow]\nplaylist-visible=true\n");
+        let c = ini_set("[General]\na=1\n", "MainWindow", "playlist-visible", "true");
+        assert!(c.ends_with("[MainWindow]\nplaylist-visible=true\n") && c.contains("[General]\na=1"));
+        // idempotent
+        assert_eq!(ini_set(&b, "MainWindow", "playlist-visible", "true"), b);
+    }
+
+    #[test]
+    fn audio_and_video_open_in_vlc_when_installed() {
+        assert_eq!(choose_opener(Protocol::Video, true), Opener::Vlc);
+        assert_eq!(choose_opener(Protocol::Audio, true), Opener::Vlc);
+        assert_eq!(choose_opener(Protocol::Video, false), Opener::Files, "no VLC: file manager");
+        assert_eq!(choose_opener(Protocol::Ssh, true), Opener::Files);
+        assert_eq!(choose_opener(Protocol::Smb, true), Opener::Files);
+    }
+
+    #[test]
+    fn media_places_are_published_in_videos_or_music() {
+        let v = Some(PathBuf::from("/home/u/Videos"));
+        let m = Some(PathBuf::from("/home/u/Music"));
+        let video = Place::new("Movies/HD", Protocol::Video, "h");
+        let audio = Place::new("Tunes", Protocol::Audio, "h");
+        assert_eq!(
+            media_library_link_in(v.clone(), m.clone(), &video),
+            Some(PathBuf::from("/home/u/Videos/Movies_HD"))
+        );
+        assert_eq!(media_library_link_in(v.clone(), m.clone(), &audio), Some(PathBuf::from("/home/u/Music/Tunes")));
+        assert_eq!(media_library_link_in(v, m, &Place::new("x", Protocol::Ssh, "h")), None);
+        assert_eq!(media_library_link_in(None, None, &video), None, "no Videos folder configured");
     }
 
     #[test]
