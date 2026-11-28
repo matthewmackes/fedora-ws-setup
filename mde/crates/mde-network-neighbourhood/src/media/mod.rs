@@ -357,4 +357,20 @@ mod live {
         println!("alien ant farm: {:?}", artist.map(|a| a.dirs.iter().map(|d| d.name.clone()).collect::<Vec<_>>()));
         assert!(!entries.is_empty());
     }
+
+    #[test]
+    #[ignore]
+    fn jellyfin_lists_real_library() {
+        let mut p = Place::new("j", Protocol::Video, &host());
+        p.username = std::env::var("NN_LIVE_USER").unwrap_or_default();
+        let pw = std::env::var("NN_LIVE_PASS").unwrap_or_default();
+        let entries = super::jellyfin::list_entries(&p, &pw).expect("list");
+        println!("items: {}", entries.len());
+        let views = crate::media::views::video_views(&entries);
+        for v in &views {
+            println!("  {}: {} dirs, {} files", v.name, v.dirs.len(), v.files.len());
+        }
+        println!("first: {:?}", views[0].files.first().map(|f| (f.name.clone(), f.size)));
+        assert!(!entries.is_empty());
+    }
 }
