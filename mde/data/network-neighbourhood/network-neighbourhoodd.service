@@ -8,6 +8,10 @@ Type=dbus
 BusName=org.mde.NetworkNeighbourhood1
 ExecStart=/usr/bin/network-neighbourhoodd
 Restart=on-failure
+# Mounts held by helper processes (password SSH, the Audio/Video filesystem) are children of
+# this daemon. Stopping or restarting the daemon (for example to install an update) must not
+# take those mounts down with it, so only the main process is signalled.
+KillMode=process
 RestartSec=3
 # Discovery writes the neighbourhood cache under /var/lib.
 RuntimeDirectory=

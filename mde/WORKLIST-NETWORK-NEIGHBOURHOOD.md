@@ -112,3 +112,8 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 - [x] The mounted library is published as `~/Videos/<name>` (Video) or `~/Music/<name>` (Audio), so it appears as a folder under VLC's **My Videos** / **My Music**. Verified on the live Jellyfin place: My Videos lists the place as a folder.
 - [x] VLC keeps its browser sidebar in the playlist panel and remembers it as hidden, so the app turns that panel on in VLC's config (only while VLC is not running; VLC rewrites the file on exit). Tested with `ini_set` unit tests.
 - Limit: VLC has no option to preselect a sidebar entry and does not remember one, so it opens with the sidebar visible and My Videos / My Music one click away.
+
+## Fix: updates no longer drop helper-held mounts (done)
+- [x] Cause: the daemon's systemd unit used the default `KillMode=control-group`, so restarting it (e.g. to install an update) killed the helper processes behind password-SSH and Audio/Video mounts, leaving those places looking connected but empty.
+- [x] Fix: `KillMode=process` in `data/network-neighbourhood/network-neighbourhoodd.service`, installed and reloaded. Verified live: restarting the daemon left the Video mount up (helper alive, folder listing intact).
+- Note: a helper that outlives the daemon is not supervised by the new daemon process; the mount stays usable and can be unmounted from the app as before.
