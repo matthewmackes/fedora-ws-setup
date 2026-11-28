@@ -74,3 +74,10 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 
 ## Verification status
 43 unit tests pass (+4 live checks run with `--ignored`) (`cargo test -p mde-network-neighbourhood`). Two items remain, both needing credentials rather than code: the SSH password for `mm@172.20.0.2` and a Jellyfin login (`sudo bash mde/data/network-neighbourhood/install.sh`).
+
+## Follow-up: guided "Add place" (done)
+- [x] Step-by-step flow (`ui/guided.rs`, logic and tests in `guide.rs`): Type, Where, Sign in, What to open, Check and save. Steps adapt to the type (NFS skips sign-in, media skips the folder step).
+- [x] Standard ports assumed (SMB 445, SSH 22, NFS 2049, WebDAV 443, Airsonic 4040, Jellyfin 8096); a different port is under "Use a different port", or typed as `host:port`.
+- [x] Hosts found on the network are offered per type; SMB shares are listed for picking.
+- [x] Real pre-save check for every type, including a Jellyfin/Airsonic sign-in. Walked through on screen against the live Airsonic server.
+- [x] "Paste a URI instead…" keeps the old single-form editor; Browse network now starts the guided flow at the sign-in step.

@@ -27,6 +27,18 @@ impl Protocol {
         }
     }
 
+    /// The standard TCP port for this service.
+    pub fn default_port(self) -> u16 {
+        match self {
+            Self::Smb => 445,
+            Self::Ssh => 22,
+            Self::Nfs => 2049,
+            Self::WebDav => 443,
+            Self::Video => 8096,
+            Self::Audio => 4040,
+        }
+    }
+
     pub fn group_label(self) -> &'static str {
         match self {
             Self::Smb => "SMB",

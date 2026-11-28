@@ -8,6 +8,14 @@ use serde_json::Value;
 const PAGE: usize = 500;
 const MAX_SONGS: usize = 10_000;
 
+/// Quick credential check (one `ping` call), for the pre-save test.
+pub fn check_login(place: &Place, password: &str) -> Result<String> {
+    let base = base_url(place);
+    let auth = auth_query(place, password);
+    check_status(&get_json(&format!("{base}/rest/ping.view?{auth}"))?)?;
+    Ok(format!("signed in as {}", if place.username.is_empty() { "admin" } else { place.username.as_str() }))
+}
+
 pub fn list_entries(place: &Place, password: &str) -> Result<Vec<Entry>> {
     let base = base_url(place);
     let auth = auth_query(place, password);

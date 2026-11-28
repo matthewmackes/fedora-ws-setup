@@ -111,6 +111,14 @@ button.nn-accent:disabled {{
 .nn-card.nn-status-off {{
   border-left-color: {muted};
 }}
+.nn-kind {{
+  padding: 14px;
+  border-radius: {radius}px;
+  background-image: none;
+}}
+.nn-kind:hover {{
+  border-color: {accent};
+}}
 .nn-chip {{
   border-radius: 999px;
   padding: 1px 10px;

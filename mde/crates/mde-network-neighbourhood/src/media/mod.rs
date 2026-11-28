@@ -280,6 +280,15 @@ fn sanitize_name(s: &str) -> String {
     out
 }
 
+/// Verify the username/password against the media server without listing anything.
+pub fn check_login(place: &Place, password: &str) -> Result<String> {
+    match place.protocol {
+        Protocol::Video => jellyfin::check_login(place, password),
+        Protocol::Audio => airsonic::check_login(place, password),
+        _ => bail!("not a media place"),
+    }
+}
+
 /// Mount a Video/Audio place with FUSE (blocking).
 pub fn mount_blocking(place_id: &str, mountpoint: &Path) -> Result<()> {
     let cfg = Config::load()?;

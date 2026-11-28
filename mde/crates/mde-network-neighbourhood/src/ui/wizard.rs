@@ -10,20 +10,31 @@ use gtk4::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
+/// The guided step-by-step flow (the default way to add a place).
 pub fn run_add_wizard(window: &ApplicationWindow, refresh: Rc<dyn Fn()>) {
+    super::guided::run(window, refresh, None);
+}
+
+/// The single-form editor with a URI box, for people who want every field.
+pub fn run_add_advanced(window: &ApplicationWindow, refresh: Rc<dyn Fn()>) {
     run_add_dialog(window, None, refresh);
 }
 
+/// Start the guided flow from a host found by Browse network.
 pub fn run_add_from_discovered(
     window: &ApplicationWindow,
     host: &DiscoveredHost,
     refresh: Rc<dyn Fn()>,
 ) {
-    let mut place = Place::new(host.name.clone(), host.protocol, host.host.clone());
-    place.port = host.port;
-    place.path = host.path.clone();
-    place.url = host.url.clone();
-    run_add_dialog(window, Some(place), refresh);
+    super::guided::run(
+        window,
+        refresh,
+        Some(super::guided::Preset {
+            protocol: host.protocol,
+            host: host.host.clone(),
+            port: host.port,
+        }),
+    );
 }
 
 pub fn run_edit_credentials(

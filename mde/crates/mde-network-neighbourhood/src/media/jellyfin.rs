@@ -41,6 +41,16 @@ fn save_session_to(path: &std::path::Path, s: &Session) -> Result<()> {
     Ok(())
 }
 
+/// Quick credential check (one sign-in call), for the pre-save test.
+pub fn check_login(place: &Place, password: &str) -> Result<String> {
+    let base = base_url(place);
+    if place.username.is_empty() {
+        bail!("enter the Jellyfin username");
+    }
+    login(&base, &place.username, password)?;
+    Ok(format!("signed in as {}", place.username))
+}
+
 pub fn list_entries(place: &Place, password: &str) -> Result<Vec<Entry>> {
     list_entries_with(place, password, &session_path(place))
 }

@@ -96,6 +96,10 @@ pub fn run(place: &Place, password: &str) -> Vec<ProbeStep> {
             Ok(shares) => out.push(step("Authenticate", true, format!("{} share(s) visible", shares.len()))),
             Err(e) => out.push(step("Authenticate", false, e.to_string())),
         },
+        Protocol::Video | Protocol::Audio => match crate::media::check_login(place, password) {
+            Ok(msg) => out.push(step("Sign in", true, msg)),
+            Err(e) => out.push(step("Sign in", false, format!("{e:#}"))),
+        },
         _ => out.push(step("Authenticate", true, "checked when you connect")),
     }
     out

@@ -2,6 +2,7 @@ mod activity;
 mod connect_dialog;
 mod connect_status;
 mod discovery;
+mod guided;
 mod settings;
 mod style;
 mod window;
