@@ -20,12 +20,31 @@ pub fn is_mounted(mount_point: &str) -> bool {
     }
 }
 
+/// `/proc/mounts` escapes space, tab, newline and backslash in paths as octal
+/// (`\040`, `\011`, `\012`, `\134`). Undo that so paths compare equal to the real one.
+fn unescape_mount_field(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'\\' && i + 3 < b.len() && b[i + 1..i + 4].iter().all(|c| (b'0'..=b'7').contains(c)) {
+            let v = (b[i + 1] - b'0') as u32 * 64 + (b[i + 2] - b'0') as u32 * 8 + (b[i + 3] - b'0') as u32;
+            out.push(v as u8);
+            i += 4;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 fn mounts_contains_real(proc_mounts: &str, mount_point: &str) -> bool {
     proc_mounts.lines().any(|l| {
         let mut f = l.split_whitespace();
-        let target = f.nth(1);
+        let target = f.nth(1).map(unescape_mount_field);
         let fstype = f.next();
-        target == Some(mount_point) && fstype != Some("autofs")
+        target.as_deref() == Some(mount_point) && fstype != Some("autofs")
     })
 }
 
@@ -973,6 +992,18 @@ pub fn ensure_admin_session() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn paths_with_spaces_are_recognised_as_mounted() {
+        // The kernel lists "/mnt/a b (SSH)" as /mnt/a\040b\040(SSH); the old exact-string
+        // compare never matched, so working mounts were reported as timeouts.
+        let m = "mm@h:. /mnt/network/SSH/172.20.0.2/space\\040test\\040(SSH) fuse.sshfs rw 0 0\n";
+        assert!(mounts_contains_real(m, "/mnt/network/SSH/172.20.0.2/space test (SSH)"));
+        assert!(!mounts_contains_real(m, "/mnt/network/SSH/172.20.0.2/space"));
+        assert_eq!(unescape_mount_field("a\\011b\\134c"), "a\tb\\c");
+        assert_eq!(unescape_mount_field("plain"), "plain");
+        assert_eq!(unescape_mount_field("trailing\\04"), "trailing\\04");
+    }
 
     #[test]
     fn autofs_placeholder_is_not_a_mount() {

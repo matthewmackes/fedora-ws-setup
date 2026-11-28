@@ -86,3 +86,7 @@ Corrections to my first review: the password sshfs path (`sshpass`, installed) a
 - [x] Two stray places created by test automation (`172.20.0.21 (SSH)`, `adminadmin`) were removed via the daemon; only the user's `ssh:172.20.0.2` place remains.
 - [x] Audit at close: 0 unchecked, 0 partial, 34 done; 51 tests pass; installed daemon and GUI byte-identical to the build of HEAD; daemon active and answering.
 - Not removed (needs root, harmless): a stale `/etc/systemd/system/mnt-network-SSH-172\x2e20\x2e0\x2e2-ssh_172\x2e20\x2e0\x2e2.mount` left from before the unit-name fix. Remove with `sudo rm` plus `systemctl daemon-reload` when convenient.
+
+## Fix: mounts "timed out" for any place name containing a space
+- [x] Cause: `/proc/mounts` writes a space as `\040`, so the daemon never matched a successful mount to its path, then killed it and reported a timeout (SSH after 45 s, media after 60 s). The guided flow's default names ("host (SSH)", "host (Video)") all contain a space, so most new places hit it.
+- [x] Fix: `/proc/mounts` octal escapes are decoded before comparing (`unescape_mount_field`), with a regression test. Reproduced live first (mount up at 8 s, reported as a 45 s timeout), then verified fixed live: SSH 2.8 s and Video 5.0 s with spaced names. Test places removed.
